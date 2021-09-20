@@ -1,0 +1,206 @@
+---
+title: "market_extension_sales_analysis"
+author: "Kat Downey"
+date: "20/09/2021"
+output:
+ html_document:
+    number_sections: false
+    fig_caption: true
+    toc: false
+    theme: cosmo
+    highlight: tango
+    code_folding: hide
+---
+
+```{r read_data, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE, fig.width = 10)
+
+
+require(dplyr)
+require(tidyr)
+require(readr)
+library(geosphere)
+require(ggplot2)
+require(knitr)
+library(kableExtra)
+library (rJava)
+library (RJDBC)
+library (bigQueryR)
+library (googleAuthR)
+library (bigrquery)
+library (ggpubr)
+library(leaflet)
+library(rgdal)
+
+dcc_sales_2021 <- read.csv('data/dcc_july_2021.csv')
+
+
+# advertised new cars by month from Looker:
+# https://autotrader.eu.looker.com/explore/trusted/proxy_sold_data?qid=0O7XrY7RcOPAEeoKz6n31N&toggle=fil
+
+# bigquery project settings
+bqProject <- "at-data-platform-prod"
+bqDataset <- "product"
+bqBilling <- "at-data-platform-svc-prod"
+connectToBigQuery <- function(project,dataset,billing){
+  dbConnect(
+    bigrquery::bigquery(),
+    project = project,
+    dataset = dataset,
+    billing = billing
+  )
+}
+con <- connectToBigQuery(project = bqProject, dataset = bqDataset, billing = bqBilling)
+sql <- paste0(
+  "
+
+SELECT 
+  sold.vrm as sold_vrm,
+  sold.new_or_used as sold_new_or_used,
+  sold.retailer_id as sold_did,
+  sold.group_id as sold_gid,
+  sold.retailer_latitude as sold_did_lat,
+  sold.retailer_longitude as sold_did_lon,
+  sold.retailer_postcode as sold_did_postcode,
+  sold.make as sold_make,
+  sold.model as sold_model,
+  buyer.postcode_district as buyyer_postcode_district,
+  buyer.latitude as buyer_lat,
+  buyer.longitude buyer_lon,
+  vrm_match_flag,
+  viewed.vrm as viewed_vrm,
+  viewed.event_date as viewed_event_date,
+  viewed.retailer_id as viewed_did,
+  viewed.group_id as viewed_gid,
+  viewed.distance_between as viewed_distance_between,
+  viewed.retailer_postcode as viewed_retailer_postcode,
+  viewed.retailer_latitude as viewed_retailer_postcode,
+  viewed.retailer_longitude as viewed_retailer_postcode,
+ 
+  
+FROM `at-data-platform-prod.vehicle_sales.confirmed_sales_record_events` 
+WHERE sold.group_id IN	('10023837') AND viewed.group_id IN ('10023837')
+  ")
+
+d <- bq_dataset_query(
+  con,
+  query = sql, 
+  billing = bqBilling
+)
+
+enhanced_match <- bq_table_download(d)
+rm(con)
+
+```
+
+## R Markdown
+
+---------------------------------------
+**Market Extension Sales Analysis**
+
+Answering questions:
+
+1. How many sales did Auto Trader influence (split by the usual VRM, Site, Group level)?
+
+2. How many sales were through the Market Extension product?
+
+3. What is the total value/profit of cars sold through Market Extension vs. Traditional
+
+4. How far away are they from the advertiser vs. Traditional sites?
+
+5. How does conversion to sale differ broken down by distance the consumer is from the advertiser?
+
+6. When the consumer buys through market extension, was the closest ME site available to them?
+
+7. How do this vary by consumer demographic? (e.g. rural vs. urban)
+
+8. How do this vary by sold vehicle type? (e.g. standard vs. premium)
+
+9. How many cars are transported to achieve the Market Extension sale?
+
+10. What is the distribution of distance travelled & when is it longer/shorter? (e.g. certain geographical hotspots      are resulting in higher proportion of transportation)
+
+11. How many transportations result in no sale & are there any common themes for when this happens 
+
+12. What volume of consumer's that buy through Market Extension, would ME custmer have been in their consideration       set without the product?
+
+13 How does Market Extension change the consumer's buying journey (volume of adviews/interactions that are ME            customer, when in the journey, etc.)
+--------------------------------------------------
+
+
+```{r example_sale, echo= FALSE}
+
+#create new market ex vrm match flag
+enhanced_match <- enhanced_match %>%
+  mutate(me_vrm_match_flag = ifelse(sold_vrm == viewed_vrm, 1,0))
+
+#join on the enriched sales data
+enhanced_match <- left_join(enhanced_match, dcc_sales_2021, by = c('sold_vrm' = 'VRM'), copy = TRUE)
+
+# q1.how many sales did Auto Trader influence (split by the usual VRM, Site, Group level)
+vrm_agg <- enhanced_match %>%
+  group_by(sold_vrm) %>%
+  summarise(row_count = n(), 
+            vrm_match_flag_sum = sum(vrm_match_flag, na.rm = TRUE),
+            me_vrm_match_flag_sum = sum(me_vrm_match_flag, na.rm = TRUE)
+  ) %>%
+  mutate(vrm_match_flag = ifelse(vrm_match_flag_sum >0 ,1,0),
+         me_vrm_match_flag = ifelse(me_vrm_match_flag_sum >0 ,1,0))  
+
+#CHECKING OUT SALE EXAMPLE
+vrm_example <- enhanced_match %>%
+  filter(sold_vrm == 'GU15MXO')
+
+
+vrm_example %>%
+  select(sold_vrm, buyyer_postcode_district, sold_did, viewed_did, viewed_event_date, me_vrm_match_flag) %>%
+  kable("simple", col.names = c('sold vrm', 'buyer postcode district', 'sold did', 'viewed did','viewed date', 'me vrm match   flag'), align = "lccccc", format.args = list(big.mark = ",", scientific = FALSE))
+
+
+```
+
+------------------------
+**Profit vs distance bandings**
+------------------------
+
+```{r profit_vs_distance, echo=FALSE}
+
+
+
+#total value profit - create a distance banding
+enhanced_match <- enhanced_match %>%
+        mutate(viewed_distance_banding = ifelse(viewed_distance_between <10, "less than 10 miles",
+                                         ifelse(viewed_distance_between <20, "less than 20 miles",
+                                         ifelse(viewed_distance_between <50, "less than 50 miles",
+                                        ifelse(viewed_distance_between <100, "less than 100 miles", "100 or more miles")))))
+
+enhanced_match$viewed_distance_banding <- factor(enhanced_match$viewed_distance_banding, levels = c("less than 10 miles", "less than 20 miles", "less than 50 miles", "less than 100 miles", "100 or more miles"), ordered = TRUE)
+
+
+profit_agg <- enhanced_match %>%
+            filter(me_vrm_match_flag == 1) %>%
+            group_by(viewed_distance_banding) %>%
+            summarise(row_count = n(),
+                      distinct_sales = n_distinct(sold_vrm),
+                      avg_profit = mean(Chassis.Margin))
+
+
+barplot(profit_agg$avg_profit, names.arg = profit_agg$viewed_distance_banding, col = 'steelblue', main = "Avg profit by distance", xlab = "Distance Banding", ylab = 'Mean Profit' )
+
+
+```
+------------------------
+**Tradtional Matches vs ME matches**
+------------------------
+```{r vrm_vs_me_matches, echo=FALSE}
+
+vrm_agg_2 <- vrm_agg %>%
+  group_by() %>%
+  summarise(vrm_matches  = sum(vrm_match_flag),
+            me_vrm_matches  = sum(me_vrm_match_flag))
+
+vrm_agg_2 %>%
+  select(vrm_matches, me_vrm_matches) %>%
+  kable("simple", col.names = c('Traditional Matches', 'ME Matches'), align = "lc", format.args = list(big.mark = ",", scientific = FALSE))
+
+```

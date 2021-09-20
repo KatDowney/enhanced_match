@@ -41,11 +41,25 @@ SELECT
   sold.new_or_used as sold_new_or_used,
   sold.retailer_id as sold_did,
   sold.group_id as sold_gid,
+  sold.retailer_latitude as sold_did_lat,
+  sold.retailer_longitude as sold_did_lon,
+  sold.retailer_postcode as sold_did_postcode,
+  sold.make as sold_make,
+  sold.model as sold_model,
+  buyer.postcode_district as buyyer_postcode_district,
+  buyer.latitude as buyer_lat,
+  buyer.longitude buyer_lon,
   vrm_match_flag,
   viewed.vrm as viewed_vrm,
   viewed.event_date as viewed_event_date,
   viewed.retailer_id as viewed_did,
-  viewed.group_id as viewed_gid
+  viewed.group_id as viewed_gid,
+  viewed.distance_between as viewed_distance_between,
+  viewed.retailer_postcode as viewed_retailer_postcode,
+  viewed.retailer_latitude as viewed_retailer_postcode,
+  viewed.retailer_longitude as viewed_retailer_postcode,
+ 
+  
 FROM `at-data-platform-prod.vehicle_sales.confirmed_sales_record_events` 
 WHERE sold.group_id IN	('10023837') AND viewed.group_id IN ('10023837')
   ")
@@ -94,7 +108,36 @@ vrm_agg_2 <- vrm_agg %>%
   summarise(vrm_matches  = sum(vrm_match_flag),
             me_vrm_matches  = sum(me_vrm_match_flag))
 View(vrm_agg_2)
-#barplot(vrm_agg$vrm_match_flag_sum)
-#total value profit - need to pull in original match file
+
+#barplot normal vs me matches
+
+#total value profit - create a distance banding
+enhanced_match <- enhanced_match %>%
+        mutate(viewed_distance_banding = ifelse(viewed_distance_between <10, "less than 10 miles",
+                                         ifelse(viewed_distance_between <20, "less than 20 miles",
+                                         ifelse(viewed_distance_between <50, "less than 50 miles",
+                                        ifelse(viewed_distance_between <100, "less than 100 miles", "100 or more miles")))))
+
+enhanced_match$viewed_distance_banding <- factor(enhanced_match$viewed_distance_banding, levels = c("less than 10 miles", "less than 20 miles", "less than 50 miles", "less than 100 miles", "100 or more miles"), ordered = TRUE)
+
+        
+View(enhanced_match)
+
+profit_agg <- enhanced_match %>%
+            filter(me_vrm_match_flag == 1) %>%
+            group_by(viewed_distance_banding) %>%
+            summarise(row_count = n(),
+                      distinct_sales = n_distinct(sold_vrm),
+                      avg_profit = mean(Chassis.Margin))
+
+View(profit_agg)
+
+barplot(profit_agg$avg_profit, names.arg = profit_agg$viewed_distance_banding, col = 'steelblue', main = "Avg profit by distance", xlab = "Distance Banding", ylab = 'Mean Profit' )
+
+#q4.How far away are they from the advertiser vs. Traditional sites? 
+#want to pull in pre and post ME data here so it's a boxplot of may/jun/july
+
+barplot(profit_agg$distinct_sales, names.arg = profit_agg$viewed_distance_banding, col = 'steelblue4', main = "Avg sales by distance", xlab = "Distance Banding", ylab = 'Avg sales' )
+
 
 
