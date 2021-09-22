@@ -55,6 +55,7 @@ sql <- paste0(
   "
 
 SELECT 
+  sold_date as sold_date,
   sold.vrm as sold_vrm,
   sold.new_or_used as sold_new_or_used,
   sold.retailer_id as sold_did,
@@ -106,23 +107,21 @@ Answering questions:
 
 3. What is the total value/profit of cars sold through Market Extension vs. Traditional
 
-4. How far away are they from the advertiser vs. Traditional sites?
+4. How far away are consumers from the virtual location vs. physical sites?
 
-5. How does conversion to sale differ broken down by distance the consumer is from the advertiser?
+5. How does conversion to sale differ broken down by distance the consumer is from the advertiser? - events data?
 
-6. When the consumer buys through market extension, was the closest ME site available to them?
+7. How do this vary by consumer demographic? (e.g. rural vs. urban) - ?
 
-7. How do this vary by consumer demographic? (e.g. rural vs. urban)
+8. How do this vary by sold vehicle type? (e.g. standard vs. premium) - possible
 
-8. How do this vary by sold vehicle type? (e.g. standard vs. premium)
+9. How many cars are transported to achieve the Market Extension sale? - potentially figure movements
 
-9. How many cars are transported to achieve the Market Extension sale?
-
-10. What is the distribution of distance travelled & when is it longer/shorter? (e.g. certain geographical hotspots      are resulting in higher proportion of transportation)
+10. What is the distribution of distance travelled & when is it longer/shorter? (e.g. certain geographical hotspots are resulting in higher proportion of transportation)
 
 11. How many transportations result in no sale & are there any common themes for when this happens 
 
-12. What volume of consumer's that buy through Market Extension, would ME custmer have been in their consideration       set without the product?
+12. What volume of consumer's that buy through Market Extension, would ME custmer have been in their consideration set without the product?
 
 13 How does Market Extension change the consumer's buying journey (volume of adviews/interactions that are ME            customer, when in the journey, etc.)
 --------------------------------------------------
@@ -137,9 +136,12 @@ enhanced_match <- enhanced_match %>%
 #join on the enriched sales data
 enhanced_match <- left_join(enhanced_match, dcc_sales_2021, by = c('sold_vrm' = 'VRM'), copy = TRUE)
 
+enhanced_match$sold_month <- format(as.Date(enhanced_match$sold_date), "%Y-%m")
+enhanced_match$Month_Yr <- NULL
+
 # q1.how many sales did Auto Trader influence (split by the usual VRM, Site, Group level)
 vrm_agg <- enhanced_match %>%
-  group_by(sold_vrm) %>%
+  group_by(sold_vrm,sold_month, viewed_distance_between, sold_make) %>%
   summarise(row_count = n(), 
             vrm_match_flag_sum = sum(vrm_match_flag, na.rm = TRUE),
             me_vrm_match_flag_sum = sum(me_vrm_match_flag, na.rm = TRUE)
@@ -160,13 +162,15 @@ vrm_example %>%
 ```
 
 ------------------------
-**Profit vs distance bandings**
+**Profit vs distance bandings (enriched dataset includes profit)**
+**What is the total value/profit of cars sold through Market Extension vs. Traditional**
 ------------------------
 
-```{r profit_vs_distance, echo=FALSE}
-
-
-
+```{r profit_vs_distance_enricheddata, echo=FALSE}
+#What is the total value/profit of cars sold through Market Extension vs. Traditional
+#currently only have enriched data for profit for July 2021
+enriched_data = enhanced_match %>%
+                filter(sold_month == '2021-07')
 #total value profit - create a distance banding
 enhanced_match <- enhanced_match %>%
         mutate(viewed_distance_banding = ifelse(viewed_distance_between <10, "less than 10 miles",
@@ -182,25 +186,61 @@ profit_agg <- enhanced_match %>%
             group_by(viewed_distance_banding) %>%
             summarise(row_count = n(),
                       distinct_sales = n_distinct(sold_vrm),
-                      avg_profit = mean(Chassis.Margin))
+                      avg_profit = mean(Chassis.Margin, na.rm = TRUE))
 
 
 barplot(profit_agg$avg_profit, names.arg = profit_agg$viewed_distance_banding, col = 'steelblue', main = "Avg profit by distance", xlab = "Distance Banding", ylab = 'Mean Profit' )
 
 
 ```
+
+
+
 ------------------------
 **Tradtional Matches vs ME matches**
 ------------------------
 ```{r vrm_vs_me_matches, echo=FALSE}
 
 vrm_agg_2 <- vrm_agg %>%
-  group_by() %>%
+  group_by(sold_month) %>%
   summarise(vrm_matches  = sum(vrm_match_flag),
             me_vrm_matches  = sum(me_vrm_match_flag))
 
 vrm_agg_2 %>%
-  select(vrm_matches, me_vrm_matches) %>%
-  kable("simple", col.names = c('Traditional Matches', 'ME Matches'), align = "lc", format.args = list(big.mark = ",", scientific = FALSE))
-
+  select(sold_month, vrm_matches, me_vrm_matches) %>%
+  kable("simple", col.names = c('Sold Month','Traditional Matches', 'ME Matches'), align = "lcc", format.args = list(big.mark = ",", scientific = FALSE))
 ```
+------------------------
+**How far away are consumers from the virtual location vs. physical sites?**
+------------------------
+
+```{r virtual_v_physical, echo=FALSE}
+vrm_agg_3 <- vrm_agg %>%
+            group_by(sold_month) %>%
+            summarise(trad_distance = mean(viewed_distance_between[vrm_match_flag == 1], na.rm = TRUE),
+                      me_distance = mean(viewed_distance_between[me_vrm_match_flag == 1]))
+vrm_agg_3 %>%
+  select(sold_month, trad_distance,me_distance ) %>%
+  kable("simple", col.names = c('Sold Month','Traditional Distance', 'ME Distance'), align = "lcc", format.args = list(big.mark = ",", scientific = FALSE))
+```
+
+------------------------
+**How do this vary by sold vehicle type? (e.g. standard vs. premium) profit?Sales/me vs non me etc**
+------------------------
+
+```{r}
+
+premium_standard <- vrm_agg %>%
+                    mutate(type_of_stock = ifelse(sold_make %in% c('BMW', 'Audi', 'Jaguar', 'Land Rover', 'Mercedes-Benz'), "premium",
+                                                  ifelse(sold_make %in% c('Vauxhall', 'Hyundai', 'Kia', 'Citroen', 'Nissan', 'Peugeot', 'Renault', 'Ford'), "standard", "other")))
+
+preimum_standard_agg <- premium_standard %>%
+                        group_by(type_of_stock,) %>%
+                        summarise(vrm_matches  = sum(vrm_match_flag),
+                        me_vrm_matches  = sum(me_vrm_match_flag),
+                        avg_trad_matches = mean(vrm_matches),
+                        avg_me_matches = mean(me_vrm_matches))
+
+barplot(table(premium_standard$type_of_stock))
+```
+
