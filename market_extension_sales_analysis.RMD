@@ -55,30 +55,7 @@ sql <- paste0(
   "
 
 SELECT 
-  sold_date as sold_date,
-  sold.vrm as sold_vrm,
-  sold.new_or_used as sold_new_or_used,
-  sold.retailer_id as sold_did,
-  sold.group_id as sold_gid,
-  sold.retailer_latitude as sold_did_lat,
-  sold.retailer_longitude as sold_did_lon,
-  sold.retailer_postcode as sold_did_postcode,
-  sold.make as sold_make,
-  sold.model as sold_model,
-  buyer.postcode_district as buyyer_postcode_district,
-  buyer.latitude as buyer_lat,
-  buyer.longitude buyer_lon,
-  vrm_match_flag,
-  viewed.vrm as viewed_vrm,
-  viewed.event_date as viewed_event_date,
-  viewed.retailer_id as viewed_did,
-  viewed.group_id as viewed_gid,
-  viewed.distance_between as viewed_distance_between,
-  viewed.retailer_postcode as viewed_retailer_postcode,
-  viewed.retailer_latitude as viewed_retailer_postcode,
-  viewed.retailer_longitude as viewed_retailer_postcode,
  
-  
 FROM `at-data-platform-prod.vehicle_sales.confirmed_sales_record_events` 
 WHERE sold.group_id IN	('10023837') AND viewed.group_id IN ('10023837')
   ")
@@ -193,8 +170,17 @@ barplot(profit_agg$avg_profit, names.arg = profit_agg$viewed_distance_banding, c
 
 
 ```
+------------------------
+**profit by month**
+------------------------
+```{r profitbymonth, echo=FALSE}
+
+enhanced_match
 
 
+
+
+```
 
 ------------------------
 **Tradtional Matches vs ME matches**
@@ -208,7 +194,7 @@ vrm_agg_2 <- vrm_agg %>%
 
 vrm_agg_2 %>%
   select(sold_month, vrm_matches, me_vrm_matches) %>%
-  kable("simple", col.names = c('Sold Month','Traditional Matches', 'ME Matches'), align = "lcc", format.args = list(big.mark = ",", scientific = FALSE))
+  kable("simple", col.names = c('Sold Month','Traditional Matches','ME Matches'), align = "lcc", format.args = list(big.mark = ",", scientific = FALSE))
 ```
 ------------------------
 **How far away are consumers from the virtual location vs. physical sites?**
@@ -243,4 +229,7 @@ preimum_standard_agg <- premium_standard %>%
 
 barplot(table(premium_standard$type_of_stock))
 ```
-
+----------------------
+**How does Market Extension change the consumer's buying journey (volume of adviews/interactions that are ME  customer, when in the journey, etc.)**
+---------------------
+```{r }

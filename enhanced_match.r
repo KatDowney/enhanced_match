@@ -37,6 +37,7 @@ sql <- paste0(
   "
 
 SELECT 
+  sold_date as sold_date,
   sold.vrm as sold_vrm,
   sold.new_or_used as sold_new_or_used,
   sold.retailer_id as sold_did,
