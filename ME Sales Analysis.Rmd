@@ -33,6 +33,9 @@ library(rgdal)
 library(reshape2)
 library(data.table)
 library(gridExtra)
+library(plyr)
+library(ggrepel)
+
 
 
 dcc_sales_2021 <- read.csv('data/dcc_july_2021.csv')
@@ -186,11 +189,10 @@ matches_m <- melt(matches[,c('sold_month', 'no_matches', 'me_vrm_matches','site_
 ggplot(matches_m,aes(x = sold_month,y = value)) + 
     geom_bar(aes(fill = variable),stat = "identity",position = "stack") + theme_minimal() + scale_fill_brewer() + labs(title = "Autotrader Influence") + labs(x = expression("Month"), y = "Influence")
 
-
-
-
 ```
-**What is the total value/profit of cars sold through Market Extension vs. Traditional**
+-------------------------------------
+**What is the total value/profit of cars sold through Market Extension**
+-------------------------------------
 ```{r profit, echo = TRUE}
 
 #total value profit - create a distance banding
@@ -198,7 +200,10 @@ enhanced_match <- enhanced_match %>%
         mutate(viewed_distance_banding = ifelse(viewed_distance_between <10, "less than 10 miles",
                                          ifelse(viewed_distance_between <20, "less than 20 miles",
                                          ifelse(viewed_distance_between <50, "less than 50 miles",
-                                        ifelse(viewed_distance_between <100, "less than 100 miles", "100 or more miles")))))
+                                         ifelse(viewed_distance_between <100, "less than 100 miles", "100 or more miles")))),
+               value_added_products = ifelse(Value.added.Products >0, 1,0)) 
+                 
+                 
 
 enhanced_match$viewed_distance_banding <- factor(enhanced_match$viewed_distance_banding, levels = c("less than 10 miles", "less than 20 miles", "less than 50 miles", "less than 100 miles", "100 or more miles"), ordered = TRUE)
 
@@ -209,12 +214,46 @@ profit_agg <- enhanced_match %>%
             summarise(row_count = n(),
                       distinct_sales = n_distinct(sold_vrm),
                       avg_profit = mean(Chassis.Margin, na.rm = TRUE))
-
+                      
 
 barplot(profit_agg$avg_profit, names.arg = profit_agg$viewed_distance_banding, col = 'steelblue', main = "Avg profit by distance - enriched data July 2021", xlab = "Distance Banding", ylab = 'Mean Profit' )
 
-```
 
+
+
+```
+-------------------------------------
+**What is the total value/profit of cars sold through Market Extension - product add ons**
+-------------------------------------
+
+```{r finance, echo = TRUE}
+
+has_finance <- enhanced_match %>%
+            filter(value_added_products == 1) %>%
+            filter(me_vrm_match_flag == 1) %>%
+            group_by(viewed_distance_banding) %>%
+            summarise(row_count = n(),
+                      distinct_sales = n_distinct(sold_vrm),
+                      avg_profit = mean(Chassis.Margin, na.rm = TRUE))
+
+no_finance <- enhanced_match %>%
+            filter(value_added_products == 0) %>%
+            filter(me_vrm_match_flag == 1) %>%
+            group_by(viewed_distance_banding) %>%
+            summarise(row_count = n(),
+                      distinct_sales = n_distinct(sold_vrm),
+                      avg_profit = mean(Chassis.Margin, na.rm = TRUE))
+
+
+par(mfrow = c(2,1))
+prof_1 <- barplot(has_finance$avg_profit, names.arg = has_finance$viewed_distance_banding, col = 'steelblue', main = "Avg profit by distance with value added products - enriched data July 2021", xlab = "Distance Banding", ylab = 'Mean Profit' )
+                      
+
+prof_2 <- barplot(no_finance$avg_profit, names.arg = no_finance$viewed_distance_banding, col = 'steelblue', main = "Avg profit by distance no value added products- enriched data July 2021", xlab = "Distance Banding", ylab = 'Mean Profit' )
+
+par(mfrow = c(1,1))
+
+```
  
 **How far away is the buyer to the seller?**
 
@@ -259,8 +298,24 @@ p1 <- ggplot(distance_bandings_m,aes(x = sold_month,y = value)) +
 p2 <- ggplot(distance_bandings_m) + 
     geom_col(aes(x = sold_month, y = value, fill = variable), position = "fill") +scale_fill_brewer()
 
-grid.arrange(p1,p2, ncol=1, nrow = 2)
 
+ggplot(distance_bandings_m, aes(y=value, x=sold_month, fill= variable)) +
+  geom_bar(stat = "identity", position = "fill") +
+  geom_text(aes(label = value), ) +
+  ylab("percent of sold vrms") +
+  scale_fill_discrete(name="Distance Bandings") +
+  xlab("Sold Month")
+
+
+distance_bandings_m <- ddply(distance_bandings_m, .(sold_month), transform, percent = value/sum(value) * 100)
+distance_bandings_m <- ddply(distance_bandings_m, .(sold_month), transform, pos = (cumsum(value) - 0.5 * value))
+distance_bandings_m$label = paste0(sprintf("%.0f", distance_bandings_m$percent), "%")
+
+ggplot(distance_bandings_m, aes(x=factor(sold_month), y = percent, fill = variable))+
+   geom_bar(position = position_stack(), stat = "identity", width = .7) +
+   geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 2)
+
+  #
 ```
 
 ------------------------
