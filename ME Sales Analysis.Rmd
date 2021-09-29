@@ -102,6 +102,7 @@ enhanced_match_base <- bq_table_download(d)
 rm(con)
 
 ```
+
 ------------------------
 **ME Locations**
 [ME Locations] (https://autotrader.eu.looker.com/explore/customer_performance/retailer_performance?qid=UOGyp76yoNhXo6N30w1V43&toggle=dat,fil,vis,vse)
@@ -115,25 +116,26 @@ rm(con)
 -------------------------------------------
 
 ```{r example_sale, echo= FALSE}
+
+# events of a simple buyer journey
+enhanced_match_base %>% group_by(sold_vrm) %>% summarise(count = n(), matches = sum(group_make_model_match_flag + group_make_match_flag + group_match_flag )) %>% View()
+View(enhanced_match_base %>% filter(sold_vrm == "LS13UYV"))
+
+enhanced_match %>% group_by(sold_vrm) %>% summarise(count = n(), matches = sum(group_make_model_match_flag + group_make_match_flag + group_match_flag )) %>% View()
+View(enhanced_match %>% filter(sold_vrm == "LS13UYV"))
+
+# create new variables
 enhanced_match <- enhanced_match_base %>%
   mutate(me_vrm_match_flag = ifelse(sold_vrm == viewed_vrm, 1,0),
         site_all_match_flag = ifelse(site_make_model_match_flag + site_make_match_flag + site_make_match_flag >0,1,0),
         group_all_match_flag = ifelse(group_make_model_match_flag + group_make_match_flag + group_match_flag >0,1,0)
         ) %>%
-        left_join(.,dcc_sales_2021, by = c('sold_vrm' = 'VRM'), copy = TRUE) %>%
-        left_join(.,all_dcc_sales, by = c('sold_vrm' = 'VRM'), copy = TRUE)
+        left_join(.,dcc_sales_2021, by = c('sold_vrm' = 'VRM'), copy = TRUE)
+        # left_join(.,all_dcc_sales, by = c('sold_vrm' = 'VRM'), copy = TRUE)
 
 enhanced_match$sold_month <- format(as.Date(enhanced_match$sold_date), "%Y-%m")
-enhanced_match$Month_Yr <- NULL
 
 # q1.how many sales did Auto Trader influence (split by the usual VRM, Site, Group level)
-vrm_agg <- enhanced_match %>%
-  group_by(sold_vrm,sold_month, viewed_distance_between, sold_make) %>%
-  summarise(row_count = n(), 
-            vrm_match_flag_sum = sum(vrm_match_flag, na.rm = TRUE),
-            me_vrm_match_flag_sum = sum(me_vrm_match_flag, na.rm = TRUE)) %>%
-  mutate(vrm_match_flag = ifelse(vrm_match_flag_sum >0 ,1,0),
-         me_vrm_match_flag = ifelse(me_vrm_match_flag_sum >0 ,1,0))  
 
 #CHECKING OUT SALE EXAMPLE
 vrm_example <- enhanced_match %>%
@@ -148,39 +150,60 @@ vrm_example %>%
 
 ```
 
+
+```{r vrm_summary}
+
+# Create a vrm level summary of the events level data for analysis
+vrm_agg <- enhanced_match %>%
+            group_by(sold_vrm, sold_month, sold_make) %>%
+            mutate(matched_viewed_distance_between = ifelse( (me_vrm_match_flag + site_all_match_flag + group_all_match_flag) > 0, viewed_distance_between, NA)) %>%
+            summarise(row_count = n(), 
+                      me_vrm_match_flag = max(me_vrm_match_flag, na.rm = TRUE),
+                      site_match_flag = max(site_all_match_flag, na.rm = TRUE),
+                      group_match_flag = max(group_all_match_flag, na.rm = TRUE),
+                      matched_viewed_distance_between = mean(matched_viewed_distance_between, na.rm=T),
+                      profit_margin = mean(Chassis.Margin, na.rm=T)
+                      ) %>%
+            mutate(site_match_flag = ifelse(me_vrm_match_flag == 1 ,0, site_match_flag),
+                  group_match_flag = ifelse( (site_match_flag == 1) | (me_vrm_match_flag == 1) ,0, group_match_flag),
+                  no_match_flag = ifelse((me_vrm_match_flag + site_match_flag + group_match_flag) >0, 0, 1)
+                  )
+
+```
+
+
 ---------------------------------
 **How many sales did Auto Trader influence (split by the usual VRM, Site, Group level)**
 ---------------------------------
 
 ```{r match_sales}
 
-vrm_agg <- enhanced_match %>%
-  group_by(sold_month, sold_vrm) %>%
-  summarise(row_count = n(), 
-            vrm_match_flag_sum = sum(vrm_match_flag, na.rm = TRUE),
-            me_vrm_match_flag_sum = sum(me_vrm_match_flag, na.rm = TRUE),
-            site_match_flag_sum =  sum(site_all_match_flag, na.rm=TRUE),
-            group_match_flag_sum = sum(group_all_match_flag, na.rm = TRUE)) %>%
-          mutate(vrm_match_flag = ifelse(vrm_match_flag_sum >0 ,1,0),
-            me_vrm_match_flag = ifelse(me_vrm_match_flag_sum >0 ,1,0),
-            site_match_flag = ifelse(site_match_flag_sum >0, 1,0),
-            group_match_flag = ifelse(group_match_flag_sum >0, 1,0),
-            no_match_flag = ifelse((me_vrm_match_flag +site_match_flag + group_match_flag) >0, 0, 1))
+# vrm_agg <- enhanced_match %>%
+#   group_by(sold_month, sold_vrm) %>%
+#   summarise(row_count = n(), 
+#             vrm_match_flag_sum = sum(vrm_match_flag, na.rm = TRUE),
+#             me_vrm_match_flag_sum = sum(me_vrm_match_flag, na.rm = TRUE),
+#             site_match_flag_sum =  sum(site_all_match_flag, na.rm=TRUE),
+#             group_match_flag_sum = sum(group_all_match_flag, na.rm = TRUE)) %>%
+#           mutate(vrm_match_flag = ifelse(vrm_match_flag_sum >0 ,1,0),
+#             me_vrm_match_flag = ifelse(me_vrm_match_flag_sum >0 ,1,0),
+#             site_match_flag = ifelse(site_match_flag_sum >0, 1,0),
+#             group_match_flag = ifelse(group_match_flag_sum >0, 1,0),
+#             no_match_flag = ifelse((me_vrm_match_flag +site_match_flag + group_match_flag) >0, 0, 1))
 
 
 
 
 matches <- vrm_agg %>%
           group_by(sold_month) %>%
-          summarise(vrm_matches = sum(vrm_match_flag, na.rm = TRUE),
-                    me_vrm_matches = sum(me_vrm_match_flag, na.rm= TRUE),
+          summarise(me_vrm_matches = sum(me_vrm_match_flag, na.rm= TRUE),
                     site_matches =  sum(site_match_flag, na.rm=TRUE),
                     group_matches = sum(group_match_flag, na.rm = TRUE),
                     no_matches = sum(no_match_flag, na.rm = TRUE))
 
 
 
-matches_m <- melt(matches[,c('sold_month', 'no_matches', 'me_vrm_matches','site_matches', 'group_matches')],id.vars = 1)
+matches_m <- melt(matches[,c('sold_month', 'no_matches', 'group_matches','site_matches', 'me_vrm_matches')],id.vars = 1)
 
 
 ggplot(matches_m,aes(x = sold_month,y = value)) + 
@@ -194,24 +217,30 @@ ggplot(matches_m,aes(x = sold_month,y = value)) +
 ```{r profit, echo = TRUE}
 
 #total value profit - create a distance banding
-enhanced_match <- enhanced_match %>%
-        mutate(viewed_distance_banding = ifelse(viewed_distance_between <10, "less than 10 miles",
-                                         ifelse(viewed_distance_between <20, "less than 20 miles",
-                                         ifelse(viewed_distance_between <50, "less than 50 miles",
-                                        ifelse(viewed_distance_between <100, "less than 100 miles", "100 or more miles")))))
+vrm_agg <- vrm_agg %>%
+        mutate(viewed_distance_banding = ifelse(matched_viewed_distance_between <10, "less than 10 miles",
+                                         ifelse(matched_viewed_distance_between <20, "less than 20 miles",
+                                         ifelse(matched_viewed_distance_between <50, "less than 50 miles",
+                                        ifelse(matched_viewed_distance_between <100, "less than 100 miles",
+                                        ifelse(matched_viewed_distance_between >=100, "100 or more miles", NA))))))
 
-enhanced_match$viewed_distance_banding <- factor(enhanced_match$viewed_distance_banding, levels = c("less than 10 miles", "less than 20 miles", "less than 50 miles", "less than 100 miles", "100 or more miles"), ordered = TRUE)
+vrm_agg$viewed_distance_banding <- factor(vrm_agg$viewed_distance_banding, levels = c("less than 10 miles", "less than 20 miles", "less than 50 miles", "less than 100 miles", "100 or more miles", NA), ordered = TRUE)
 
 
-profit_agg <- enhanced_match %>%
-            filter(me_vrm_match_flag == 1) %>%
+profit_agg <- vrm_agg %>%
+            filter(no_match_flag == 0) %>%
             group_by(viewed_distance_banding) %>%
             summarise(row_count = n(),
                       distinct_sales = n_distinct(sold_vrm),
-                      avg_profit = mean(Chassis.Margin, na.rm = TRUE))
+                      avg_profit = mean(profit_margin, na.rm = TRUE))
 
 
-barplot(profit_agg$avg_profit, names.arg = profit_agg$viewed_distance_banding, col = 'steelblue', main = "Avg profit by distance - enriched data July 2021", xlab = "Distance Banding", ylab = 'Mean Profit' )
+par(mfrow=c(1,2))
+hist(vrm_agg$profit_margin, col = 'skyblue3', breaks = 20, xlab = 'profit margin', main = "Avg profit distirbution")
+
+barplot(profit_agg$avg_profit, names.arg = profit_agg$viewed_distance_banding, col = 'steelblue', main = "Avg profit by distance", xlab = "Distance Banding", ylab = 'Mean Profit' )
+
+par(mfrow=c(1,1))
 
 ```
 
@@ -221,45 +250,63 @@ barplot(profit_agg$avg_profit, names.arg = profit_agg$viewed_distance_banding, c
 ```{r distance, echo= TRUE}
 
 
-distance_agg <- enhanced_match %>%
-group_by(sold_month, sold_vrm) %>%
-  
-  summarise(row_count = n(), 
-            less_than_10_miles_sum = sum(viewed_distance_banding == 'less than 10 miles', na.rm = TRUE),
-            less_than_20_miles_sum = sum(viewed_distance_banding == 'less than 20 miles', na.rm = TRUE),
-            less_than_50_miles_sum = sum(viewed_distance_banding == 'less than 50 miles', na.rm = TRUE),
-            less_than_100_miles_sum = sum(viewed_distance_banding == 'less than 100 miles', na.rm = TRUE),
-            onehundered_or_more_miles_sum = sum(viewed_distance_banding == '100 or more miles', na.rm = TRUE)) %>%
-          mutate(less_10_miles_match = ifelse(less_than_10_miles_sum >0 ,1,0),
-                less_20_miles_match = ifelse(less_than_20_miles_sum >0 ,1,0), 
-                less_50_miles_match = ifelse(less_than_50_miles_sum >0 ,1,0),
-                less_100_miles_match = ifelse(less_than_100_miles_sum >0 ,1,0),
-                onehundred_or_more_miles_match = ifelse(onehundered_or_more_miles_sum >0 ,1,0))
+# distance_agg <- enhanced_match %>%
+# group_by(sold_month, sold_vrm) %>%
+#   
+#   summarise(row_count = n(), 
+#             less_than_10_miles_sum = sum(viewed_distance_banding == 'less than 10 miles', na.rm = TRUE),
+#             less_than_20_miles_sum = sum(viewed_distance_banding == 'less than 20 miles', na.rm = TRUE),
+#             less_than_50_miles_sum = sum(viewed_distance_banding == 'less than 50 miles', na.rm = TRUE),
+#             less_than_100_miles_sum = sum(viewed_distance_banding == 'less than 100 miles', na.rm = TRUE),
+#             onehundered_or_more_miles_sum = sum(viewed_distance_banding == '100 or more miles', na.rm = TRUE)) %>%
+#           mutate(less_10_miles_match = ifelse(less_than_10_miles_sum >0 ,1,0),
+#                 less_20_miles_match = ifelse(less_than_20_miles_sum >0 ,1,0), 
+#                 less_50_miles_match = ifelse(less_than_50_miles_sum >0 ,1,0),
+#                 less_100_miles_match = ifelse(less_than_100_miles_sum >0 ,1,0),
+#                 onehundred_or_more_miles_match = ifelse(onehundered_or_more_miles_sum >0 ,1,0))
+# 
+# distance_bandings <- distance_agg %>%
+#                   group_by(sold_month) %>%
+#                   summarise(less_than_10_miles = sum(less_10_miles_match, na.rm = TRUE),
+#                     less_than_20_miles = sum(less_20_miles_match, na.rm= TRUE),
+#                     less_than_50_miles =  sum(less_50_miles_match, na.rm=TRUE),
+#                     less_than_100_miles = sum(less_100_miles_match, na.rm = TRUE),
+#                     onehundred_or_more_miles = sum(onehundred_or_more_miles_match, na.rm = TRUE))
+#               
+# 
+# 
+# 
+# distance_bandings_m <- melt(distance_bandings[,c('sold_month', 'less_than_10_miles','less_than_20_miles', 'less_than_50_miles', 'less_than_100_miles', 'onehundred_or_more_miles')],id.vars = 1)
+# 
+# 
+# 
+# 
+# p1 <- ggplot(distance_bandings_m,aes(x = sold_month,y = value)) + 
+#     geom_bar(aes(fill = variable),stat = "identity",position = "stack") + theme_minimal() + scale_fill_brewer() + labs(title = "Viewed distance banding") + labs(x = expression("Month"), y = "banding")
+# 
+# 
+# p2 <- ggplot(distance_bandings_m) + 
+#     geom_col(aes(x = sold_month, y = value, fill = variable), position = "fill") +scale_fill_brewer()
+# 
+# grid.arrange(p1,p2, ncol=1, nrow = 2)
 
-distance_bandings <- distance_agg %>%
-                  group_by(sold_month) %>%
-                  summarise(less_than_10_miles = sum(less_10_miles_match, na.rm = TRUE),
-                    less_than_20_miles = sum(less_20_miles_match, na.rm= TRUE),
-                    less_than_50_miles =  sum(less_50_miles_match, na.rm=TRUE),
-                    less_than_100_miles = sum(less_100_miles_match, na.rm = TRUE),
-                    onehundred_or_more_miles = sum(onehundred_or_more_miles_match, na.rm = TRUE))
-              
+distance_matches <- vrm_agg %>%
+                      filter(!is.na(viewed_distance_banding)) %>%
+                      group_by(sold_month, viewed_distance_banding) %>%
+                      summarise(me_vrm_matches = sum(me_vrm_match_flag, na.rm= TRUE),
+                                site_matches =  sum(site_match_flag, na.rm=TRUE),
+                                group_matches = sum(group_match_flag, na.rm = TRUE),
+                                no_matches = sum(no_match_flag, na.rm = TRUE))
 
 
 
-distance_bandings_m <- melt(distance_bandings[,c('sold_month', 'less_than_10_miles','less_than_20_miles', 'less_than_50_miles', 'less_than_100_miles', 'onehundred_or_more_miles')],id.vars = 1)
+distance_matches_m <- melt(distance_matches[,c('sold_month', 'viewed_distance_banding', 'no_matches', 'group_matches','site_matches', 'me_vrm_matches')],id.vars = c(1,2))
 
 
+ggplot(distance_matches_m,aes(x = sold_month,y = value)) + 
+    geom_bar(aes(fill = viewed_distance_banding),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "Autotrader Influence") + labs(x = expression("Month"), y = "Influence")
 
 
-p1 <- ggplot(distance_bandings_m,aes(x = sold_month,y = value)) + 
-    geom_bar(aes(fill = variable),stat = "identity",position = "stack") + theme_minimal() + scale_fill_brewer() + labs(title = "Viewed distance banding") + labs(x = expression("Month"), y = "banding")
-
-
-p2 <- ggplot(distance_bandings_m) + 
-    geom_col(aes(x = sold_month, y = value, fill = variable), position = "fill") +scale_fill_brewer()
-
-grid.arrange(p1,p2, ncol=1, nrow = 2)
 
 ```
 
