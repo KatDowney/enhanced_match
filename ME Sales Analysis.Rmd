@@ -36,7 +36,7 @@ library(gridExtra)
 
 
 dcc_sales_2021 <- read.csv('data/dcc_july_2021.csv')
-all_dcc_sales <-  read.csv('data/all_dcc_sales.csv')
+# all_dcc_sales <-  read.csv('data/all_dcc_sales.csv')
 
 
 # advertised new cars by month from Looker:
@@ -117,12 +117,17 @@ rm(con)
 
 ```{r example_sale, echo= FALSE}
 
-# events of a simple buyer journey
-enhanced_match_base %>% group_by(sold_vrm) %>% summarise(count = n(), matches = sum(group_make_model_match_flag + group_make_match_flag + group_match_flag )) %>% View()
-View(enhanced_match_base %>% filter(sold_vrm == "LS13UYV"))
+################## TEMP TO CHECK SOME EXAMPLES FOR THE DATA PREP  -----------
 
-enhanced_match %>% group_by(sold_vrm) %>% summarise(count = n(), matches = sum(group_make_model_match_flag + group_make_match_flag + group_match_flag )) %>% View()
-View(enhanced_match %>% filter(sold_vrm == "LS13UYV"))
+# events of a simple buyer journey
+# enhanced_match_base %>% group_by(sold_vrm) %>% summarise(count = n(), matches = sum(group_make_model_match_flag + group_make_match_flag + group_match_flag )) %>% View()
+# View(enhanced_match_base %>% filter(sold_vrm == "LS13UYV"))
+# 
+# enhanced_match %>% group_by(sold_vrm) %>% summarise(count = n(), matches = sum(group_make_model_match_flag + group_make_match_flag + group_match_flag )) %>% View()
+# View(enhanced_match %>% filter(sold_vrm == "LS13UYV"))
+
+################## TEMP TO CHECK SOME EXAMPLES FOR THE DATA PREP  -----------
+
 
 # create new variables
 enhanced_match <- enhanced_match_base %>%
@@ -177,21 +182,6 @@ vrm_agg <- enhanced_match %>%
 ---------------------------------
 
 ```{r match_sales}
-
-# vrm_agg <- enhanced_match %>%
-#   group_by(sold_month, sold_vrm) %>%
-#   summarise(row_count = n(), 
-#             vrm_match_flag_sum = sum(vrm_match_flag, na.rm = TRUE),
-#             me_vrm_match_flag_sum = sum(me_vrm_match_flag, na.rm = TRUE),
-#             site_match_flag_sum =  sum(site_all_match_flag, na.rm=TRUE),
-#             group_match_flag_sum = sum(group_all_match_flag, na.rm = TRUE)) %>%
-#           mutate(vrm_match_flag = ifelse(vrm_match_flag_sum >0 ,1,0),
-#             me_vrm_match_flag = ifelse(me_vrm_match_flag_sum >0 ,1,0),
-#             site_match_flag = ifelse(site_match_flag_sum >0, 1,0),
-#             group_match_flag = ifelse(group_match_flag_sum >0, 1,0),
-#             no_match_flag = ifelse((me_vrm_match_flag +site_match_flag + group_match_flag) >0, 0, 1))
-
-
 
 
 matches <- vrm_agg %>%
@@ -249,47 +239,7 @@ par(mfrow=c(1,1))
 
 ```{r distance, echo= TRUE}
 
-
-# distance_agg <- enhanced_match %>%
-# group_by(sold_month, sold_vrm) %>%
-#   
-#   summarise(row_count = n(), 
-#             less_than_10_miles_sum = sum(viewed_distance_banding == 'less than 10 miles', na.rm = TRUE),
-#             less_than_20_miles_sum = sum(viewed_distance_banding == 'less than 20 miles', na.rm = TRUE),
-#             less_than_50_miles_sum = sum(viewed_distance_banding == 'less than 50 miles', na.rm = TRUE),
-#             less_than_100_miles_sum = sum(viewed_distance_banding == 'less than 100 miles', na.rm = TRUE),
-#             onehundered_or_more_miles_sum = sum(viewed_distance_banding == '100 or more miles', na.rm = TRUE)) %>%
-#           mutate(less_10_miles_match = ifelse(less_than_10_miles_sum >0 ,1,0),
-#                 less_20_miles_match = ifelse(less_than_20_miles_sum >0 ,1,0), 
-#                 less_50_miles_match = ifelse(less_than_50_miles_sum >0 ,1,0),
-#                 less_100_miles_match = ifelse(less_than_100_miles_sum >0 ,1,0),
-#                 onehundred_or_more_miles_match = ifelse(onehundered_or_more_miles_sum >0 ,1,0))
-# 
-# distance_bandings <- distance_agg %>%
-#                   group_by(sold_month) %>%
-#                   summarise(less_than_10_miles = sum(less_10_miles_match, na.rm = TRUE),
-#                     less_than_20_miles = sum(less_20_miles_match, na.rm= TRUE),
-#                     less_than_50_miles =  sum(less_50_miles_match, na.rm=TRUE),
-#                     less_than_100_miles = sum(less_100_miles_match, na.rm = TRUE),
-#                     onehundred_or_more_miles = sum(onehundred_or_more_miles_match, na.rm = TRUE))
-#               
-# 
-# 
-# 
-# distance_bandings_m <- melt(distance_bandings[,c('sold_month', 'less_than_10_miles','less_than_20_miles', 'less_than_50_miles', 'less_than_100_miles', 'onehundred_or_more_miles')],id.vars = 1)
-# 
-# 
-# 
-# 
-# p1 <- ggplot(distance_bandings_m,aes(x = sold_month,y = value)) + 
-#     geom_bar(aes(fill = variable),stat = "identity",position = "stack") + theme_minimal() + scale_fill_brewer() + labs(title = "Viewed distance banding") + labs(x = expression("Month"), y = "banding")
-# 
-# 
-# p2 <- ggplot(distance_bandings_m) + 
-#     geom_col(aes(x = sold_month, y = value, fill = variable), position = "fill") +scale_fill_brewer()
-# 
-# grid.arrange(p1,p2, ncol=1, nrow = 2)
-
+# create distance aggregation to show how distance buyer travels changes over time
 distance_matches <- vrm_agg %>%
                       filter(!is.na(viewed_distance_banding)) %>%
                       group_by(sold_month, viewed_distance_banding) %>%
@@ -298,11 +248,10 @@ distance_matches <- vrm_agg %>%
                                 group_matches = sum(group_match_flag, na.rm = TRUE),
                                 no_matches = sum(no_match_flag, na.rm = TRUE))
 
-
-
+# melt to in right format for plotting
 distance_matches_m <- melt(distance_matches[,c('sold_month', 'viewed_distance_banding', 'no_matches', 'group_matches','site_matches', 'me_vrm_matches')],id.vars = c(1,2))
 
-
+# create barplot
 ggplot(distance_matches_m,aes(x = sold_month,y = value)) + 
     geom_bar(aes(fill = viewed_distance_banding),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "Autotrader Influence") + labs(x = expression("Month"), y = "Influence")
 
@@ -318,42 +267,42 @@ ggplot(distance_matches_m,aes(x = sold_month,y = value)) +
 premium_standard <- enhanced_match %>%
                     mutate(type_of_stock = ifelse(sold_make %in% c('BMW', 'Audi', 'Jaguar', 'Land Rover', 'Mercedes-Benz', 'MINI', 'Jeep', 'Alfa Romeo'), "premium",
                                            ifelse(sold_make %in% c('Citroen', 'Peugeot', 'Vauxhall', 'Hyundai', 'Kia', 'Nissan', "Volkswagen", 'Peugeot', 'Renault', 'Ford', 'Hyundai','Toyota', 'Volvo', 'Mazda', 'SEAT', 'Dacia', 'SKODA', 'Suzuki', 'DS AUTOMOBILES', 'Mitsubishi', 'Smart', 'Honda'), "standard", "other")))
-
-
-premium_standard_agg <- premium_standard %>%
-  group_by(type_of_stock, sold_month, sold_vrm) %>%
-  summarise(row_count = n(), 
-            less_than_10_miles_sum = sum(viewed_distance_banding == 'less than 10 miles', na.rm = TRUE),
-            less_than_20_miles_sum = sum(viewed_distance_banding == 'less than 20 miles', na.rm = TRUE),
-            less_than_50_miles_sum = sum(viewed_distance_banding == 'less than 50 miles', na.rm = TRUE),
-            less_than_100_miles_sum = sum(viewed_distance_banding == 'less than 100 miles', na.rm = TRUE),
-            onehundered_or_more_miles_sum = sum(viewed_distance_banding == '100 or more miles', na.rm = TRUE)) %>%
-          mutate(less_10_miles_match = ifelse(less_than_10_miles_sum >0 ,1,0),
-                less_20_miles_match = ifelse(less_than_20_miles_sum >0 ,1,0), 
-                less_50_miles_match = ifelse(less_than_50_miles_sum >0 ,1,0),
-                less_100_miles_match = ifelse(less_than_100_miles_sum >0 ,1,0),
-                onehundred_or_more_miles_match = ifelse(onehundered_or_more_miles_sum >0 ,1,0))
-
-
-type_stock_distance_bandings <- premium_standard_agg %>%
-                             group_by(type_of_stock, sold_month) %>%
-                             summarise(less_than_10_miles = sum(less_10_miles_match, na.rm = TRUE),
-                              less_than_20_miles = sum(less_20_miles_match, na.rm= TRUE),
-                              less_than_50_miles =  sum(less_50_miles_match, na.rm=TRUE),
-                              less_than_100_miles = sum(less_100_miles_match, na.rm = TRUE),
-                              onehundred_or_more_miles = sum(onehundred_or_more_miles_match, na.rm = TRUE))
-
-
-type_stock_distance_bandings_m <- melt(type_stock_distance_bandings[,c('type_of_stock','less_than_10_miles','less_than_20_miles', 'less_than_50_miles', 'less_than_100_miles', 'onehundred_or_more_miles')],id.vars = 1)
-
-
-test_m <- melt(setDT(type_stock_distance_bandings), id.vars ="type_of_stock")
-
-
-ggplot(type_stock_distance_bandings_m,aes(x = type_of_stock,y = value)) + 
-    geom_bar(aes(fill = variable),stat = "identity",position = "stack") + theme_minimal() + scale_fill_brewer() + labs(title = "Viewed distance banding") + labs(x = expression("type_of_stock"), y = "viewed_distance")
-
- 
+# 
+# 
+# premium_standard_agg <- premium_standard %>%
+#   group_by(type_of_stock, sold_month, sold_vrm) %>%
+#   summarise(row_count = n(), 
+#             less_than_10_miles_sum = sum(viewed_distance_banding == 'less than 10 miles', na.rm = TRUE),
+#             less_than_20_miles_sum = sum(viewed_distance_banding == 'less than 20 miles', na.rm = TRUE),
+#             less_than_50_miles_sum = sum(viewed_distance_banding == 'less than 50 miles', na.rm = TRUE),
+#             less_than_100_miles_sum = sum(viewed_distance_banding == 'less than 100 miles', na.rm = TRUE),
+#             onehundered_or_more_miles_sum = sum(viewed_distance_banding == '100 or more miles', na.rm = TRUE)) %>%
+#           mutate(less_10_miles_match = ifelse(less_than_10_miles_sum >0 ,1,0),
+#                 less_20_miles_match = ifelse(less_than_20_miles_sum >0 ,1,0), 
+#                 less_50_miles_match = ifelse(less_than_50_miles_sum >0 ,1,0),
+#                 less_100_miles_match = ifelse(less_than_100_miles_sum >0 ,1,0),
+#                 onehundred_or_more_miles_match = ifelse(onehundered_or_more_miles_sum >0 ,1,0))
+# 
+# 
+# type_stock_distance_bandings <- premium_standard_agg %>%
+#                              group_by(type_of_stock, sold_month) %>%
+#                              summarise(less_than_10_miles = sum(less_10_miles_match, na.rm = TRUE),
+#                               less_than_20_miles = sum(less_20_miles_match, na.rm= TRUE),
+#                               less_than_50_miles =  sum(less_50_miles_match, na.rm=TRUE),
+#                               less_than_100_miles = sum(less_100_miles_match, na.rm = TRUE),
+#                               onehundred_or_more_miles = sum(onehundred_or_more_miles_match, na.rm = TRUE))
+# 
+# 
+# type_stock_distance_bandings_m <- melt(type_stock_distance_bandings[,c('type_of_stock','less_than_10_miles','less_than_20_miles', 'less_than_50_miles', 'less_than_100_miles', 'onehundred_or_more_miles')],id.vars = 1)
+# 
+# 
+# test_m <- melt(setDT(type_stock_distance_bandings), id.vars ="type_of_stock")
+# 
+# 
+# ggplot(type_stock_distance_bandings_m,aes(x = type_of_stock,y = value)) + 
+#     geom_bar(aes(fill = variable),stat = "identity",position = "stack") + theme_minimal() + scale_fill_brewer() + labs(title = "Viewed distance banding") + labs(x = expression("type_of_stock"), y = "viewed_distance")
+# 
+#  
 
 
 
