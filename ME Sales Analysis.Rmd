@@ -14,7 +14,6 @@ output:
 ```{r read_data, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE, fig.width = 10)
 
-
 require(dplyr)
 require(tidyr)
 require(readr)
@@ -33,13 +32,12 @@ library(rgdal)
 library(reshape2)
 library(data.table)
 library(gridExtra)
-library(plyr)
 library(ggrepel)
 
 
 
 dcc_sales_2021 <- read.csv('data/dcc_july_2021.csv')
-all_dcc_sales <-  read.csv('data/all_dcc_sales.csv')
+# all_dcc_sales <-  read.csv('data/all_dcc_sales.csv')
 
 
 # advertised new cars by month from Looker:
@@ -105,6 +103,7 @@ enhanced_match_base <- bq_table_download(d)
 rm(con)
 
 ```
+
 ------------------------
 **ME Locations**
 [ME Locations] (https://autotrader.eu.looker.com/explore/customer_performance/retailer_performance?qid=UOGyp76yoNhXo6N30w1V43&toggle=dat,fil,vis,vse)
@@ -114,29 +113,39 @@ rm(con)
 [ME Product Timeline] (https://autotrader.eu.looker.com/explore/customer_performance/retailer_performance?qid=EcNifiWF2u6fyJJYnUxWE7&toggle=fil,vis)
 ![ME Product Timeline](./pictures/change_to_location_plus.png)
 -------------------------------------------
-**VRM Example - Direct Mqtch vs ME Match**
+**VRM Example - Direct Match vs ME Match**
 -------------------------------------------
 
 ```{r example_sale, echo= FALSE}
+
+################## TEMP TO CHECK SOME EXAMPLES FOR THE DATA PREP  -----------
+
+# events of a simple buyer journey
+# enhanced_match_base %>% group_by(sold_vrm) %>% summarise(count = n(), matches = sum(group_make_model_match_flag + group_make_match_flag + group_match_flag )) %>% View()
+# View(enhanced_match_base %>% filter(sold_vrm == "LS13UYV"))
+# 
+# enhanced_match %>% group_by(sold_vrm) %>% summarise(count = n(), matches = sum(group_make_model_match_flag + group_make_match_flag + group_match_flag )) %>% View()
+# View(enhanced_match %>% filter(sold_vrm == "LS13UYV"))
+
+################## TEMP TO CHECK SOME EXAMPLES FOR THE DATA PREP  -----------
+
+
+# create new variables
 enhanced_match <- enhanced_match_base %>%
   mutate(me_vrm_match_flag = ifelse(sold_vrm == viewed_vrm, 1,0),
         site_all_match_flag = ifelse(site_make_model_match_flag + site_make_match_flag + site_make_match_flag >0,1,0),
-        group_all_match_flag = ifelse(group_make_model_match_flag + group_make_match_flag + group_match_flag >0,1,0)
+        group_all_match_flag = ifelse(group_make_model_match_flag + group_make_match_flag + group_match_flag >0,1,0),
+        type_of_stock = ifelse(sold_make %in% c('BMW', 'Audi', 'Jaguar', 'Land Rover', 'Mercedes-Benz', 'MINI', 'Jeep', 'Alfa Romeo'), "premium",
+                                           ifelse(sold_make %in% c('Citroen', 'Peugeot', 'Vauxhall', 'Hyundai', 'Kia', 'Nissan', "Volkswagen", 'Peugeot', 'Renault', 'Ford', 'Hyundai','Toyota', 'Volvo', 'Mazda', 'SEAT', 'Dacia', 'SKODA', 'Suzuki', 'DS AUTOMOBILES', 'Mitsubishi', 'Smart', 'Honda'), "standard", "other"))
         ) %>%
-        left_join(.,dcc_sales_2021, by = c('sold_vrm' = 'VRM'), copy = TRUE) %>%
-        left_join(.,all_dcc_sales, by = c('sold_vrm' = 'VRM'), copy = TRUE)
+        left_join(.,dcc_sales_2021, by = c('sold_vrm' = 'VRM'), copy = TRUE)
+        
+
+        # left_join(.,all_dcc_sales, by = c('sold_vrm' = 'VRM'), copy = TRUE)
 
 enhanced_match$sold_month <- format(as.Date(enhanced_match$sold_date), "%Y-%m")
-enhanced_match$Month_Yr <- NULL
 
 # q1.how many sales did Auto Trader influence (split by the usual VRM, Site, Group level)
-vrm_agg <- enhanced_match %>%
-  group_by(sold_vrm,sold_month, viewed_distance_between, sold_make) %>%
-  summarise(row_count = n(), 
-            vrm_match_flag_sum = sum(vrm_match_flag, na.rm = TRUE),
-            me_vrm_match_flag_sum = sum(me_vrm_match_flag, na.rm = TRUE)) %>%
-  mutate(vrm_match_flag = ifelse(vrm_match_flag_sum >0 ,1,0),
-         me_vrm_match_flag = ifelse(me_vrm_match_flag_sum >0 ,1,0))  
 
 #CHECKING OUT SALE EXAMPLE
 vrm_example <- enhanced_match %>%
@@ -145,227 +154,212 @@ vrm_example <- enhanced_match %>%
 
 
 vrm_example %>%
-  select(sold_vrm, buyyer_postcode_district, sold_did, viewed_did, viewed_event_date, me_vrm_match_flag) %>%
-  kable("simple", col.names = c('sold vrm', 'buyer postcode district', 'sold did', 'viewed did','viewed date', 'me vrm match   flag'), align = "lccccc", format.args = list(big.mark = ",", scientific = FALSE))
+  select(sold_vrm, buyyer_postcode_district, sold_did, viewed_vrm, viewed_did, viewed_event_date, me_vrm_match_flag) %>%
+  kable("simple", col.names = c('sold vrm', 'buyer postcode district', 'sold did','viewed vrm', 'viewed did','viewed date', 'me vrm match flag'), align = "lcccccc", format.args = list(big.mark = ",", scientific = FALSE))
 
 
 ```
 
+
+```{r vrm_summary}
+
+# Create a vrm level summary of the events level data for analysis
+vrm_agg <- enhanced_match %>%
+            group_by(sold_vrm, sold_month, sold_make, type_of_stock) %>%
+            mutate(value_added_products = ifelse(Value.added.Products >0, 1,0),
+           matched_viewed_distance_between = ifelse( (me_vrm_match_flag + site_all_match_flag + group_all_match_flag) > 0, viewed_distance_between, NA)
+              )%>%
+            summarise(row_count = n(),
+                      me_vrm_match_flag = max(me_vrm_match_flag, na.rm = TRUE),
+                      site_match_flag = max(site_all_match_flag, na.rm = TRUE),
+                      group_match_flag = max(group_all_match_flag, na.rm = TRUE),
+                      matched_viewed_distance_between = mean(matched_viewed_distance_between, na.rm=T),
+                      profit_margin = mean(Chassis.Margin, na.rm=T),
+                      value_added_products_flag = max(value_added_products)
+                      ) %>%
+            mutate(site_match_flag = ifelse(me_vrm_match_flag == 1 ,0, site_match_flag),
+                  group_match_flag = ifelse( (site_match_flag == 1) | (me_vrm_match_flag == 1) ,0, group_match_flag),
+                  no_match_flag = ifelse((me_vrm_match_flag + site_match_flag + group_match_flag) >0, 0, 1),
+                  )
+```
+
+
 ---------------------------------
 **How many sales did Auto Trader influence (split by the usual VRM, Site, Group level)**
+After the switch to location + in July 2021 ME vrm matches greatly increased for DCC Sales
 ---------------------------------
 
 ```{r match_sales}
 
-vrm_agg <- enhanced_match %>%
-  group_by(sold_month, sold_vrm) %>%
-  summarise(row_count = n(), 
-            vrm_match_flag_sum = sum(vrm_match_flag, na.rm = TRUE),
-            me_vrm_match_flag_sum = sum(me_vrm_match_flag, na.rm = TRUE),
-            site_match_flag_sum =  sum(site_all_match_flag, na.rm=TRUE),
-            group_match_flag_sum = sum(group_all_match_flag, na.rm = TRUE)) %>%
-          mutate(vrm_match_flag = ifelse(vrm_match_flag_sum >0 ,1,0),
-            me_vrm_match_flag = ifelse(me_vrm_match_flag_sum >0 ,1,0),
-            site_match_flag = ifelse(site_match_flag_sum >0, 1,0),
-            group_match_flag = ifelse(group_match_flag_sum >0, 1,0),
-            no_match_flag = ifelse((me_vrm_match_flag +site_match_flag + group_match_flag) >0, 0, 1))
-
-
-
 
 matches <- vrm_agg %>%
           group_by(sold_month) %>%
-          summarise(vrm_matches = sum(vrm_match_flag, na.rm = TRUE),
-                    me_vrm_matches = sum(me_vrm_match_flag, na.rm= TRUE),
+          summarise(me_vrm_matches = sum(me_vrm_match_flag, na.rm= TRUE),
                     site_matches =  sum(site_match_flag, na.rm=TRUE),
                     group_matches = sum(group_match_flag, na.rm = TRUE),
                     no_matches = sum(no_match_flag, na.rm = TRUE))
 
 
 
-matches_m <- melt(matches[,c('sold_month', 'no_matches', 'me_vrm_matches','site_matches', 'group_matches')],id.vars = 1)
+matches_m <- melt(matches[,c('sold_month', 'no_matches', 'group_matches','site_matches', 'me_vrm_matches')],id.vars = 1)
 
 
 ggplot(matches_m,aes(x = sold_month,y = value)) + 
     geom_bar(aes(fill = variable),stat = "identity",position = "stack") + theme_minimal() + scale_fill_brewer() + labs(title = "Autotrader Influence") + labs(x = expression("Month"), y = "Influence")
 
 ```
+
+
+
+
 -------------------------------------
 **What is the total value/profit of cars sold through Market Extension**
+Enriched Profit was only available for July 2021 but from this data we see tha the average profit per car was around the £1000 - £2000 mark.
 -------------------------------------
 ```{r profit, echo = TRUE}
 
-#total value profit - create a distance banding
-enhanced_match <- enhanced_match %>%
-        mutate(viewed_distance_banding = ifelse(viewed_distance_between <10, "less than 10 miles",
-                                         ifelse(viewed_distance_between <20, "less than 20 miles",
-                                         ifelse(viewed_distance_between <50, "less than 50 miles",
-                                         ifelse(viewed_distance_between <100, "less than 100 miles", "100 or more miles")))),
-               value_added_products = ifelse(Value.added.Products >0, 1,0)) 
-                 
-                 
-
-enhanced_match$viewed_distance_banding <- factor(enhanced_match$viewed_distance_banding, levels = c("less than 10 miles", "less than 20 miles", "less than 50 miles", "less than 100 miles", "100 or more miles"), ordered = TRUE)
+vrm_agg <- vrm_agg %>%
+        mutate(viewed_distance_banding = ifelse(matched_viewed_distance_between <10, "less than 10 miles",
+                                         ifelse(matched_viewed_distance_between <20, "less than 20 miles",
+                                         ifelse(matched_viewed_distance_between <50, "less than 50 miles",
+                                        ifelse(matched_viewed_distance_between <100, "less than 100 miles",
+                                        ifelse(matched_viewed_distance_between >=100, "100 or more miles", NA))))))
 
 
-profit_agg <- enhanced_match %>%
-            filter(me_vrm_match_flag == 1) %>%
+vrm_agg$viewed_distance_banding <- factor(vrm_agg$viewed_distance_banding, levels = c("less than 10 miles", "less than 20 miles", "less than 50 miles", "less than 100 miles", "100 or more miles", NA), ordered = TRUE)
+
+
+profit_agg <- vrm_agg %>%
+            filter(no_match_flag == 0) %>%
             group_by(viewed_distance_banding) %>%
             summarise(row_count = n(),
                       distinct_sales = n_distinct(sold_vrm),
-                      avg_profit = mean(Chassis.Margin, na.rm = TRUE))
-                      
+                      avg_profit = mean(profit_margin, na.rm = TRUE))
 
-barplot(profit_agg$avg_profit, names.arg = profit_agg$viewed_distance_banding, col = 'steelblue', main = "Avg profit by distance - enriched data July 2021", xlab = "Distance Banding", ylab = 'Mean Profit' )
+par(mfrow=c(1,2))
+hist(vrm_agg$profit_margin, col = 'skyblue3', breaks = 20, xlab = 'profit margin', main = "Avg profit distribution")
+
+barplot(profit_agg$avg_profit, names.arg = profit_agg$viewed_distance_banding, col = 'steelblue', main = "Avg profit by distance", xlab = "Distance Banding", ylab = 'Mean Profit' )
+
+par(mfrow=c(1,1))
 
 
 
 
 ```
+
+
 -------------------------------------
 **What is the total value/profit of cars sold through Market Extension - product add ons**
+Looking at the enriched profit data for July the cars sold with 'add ons' (finance etc) those without add ons appears to have a higher average profit
 -------------------------------------
 
 ```{r finance, echo = TRUE}
 
-has_finance <- enhanced_match %>%
-            filter(value_added_products == 1) %>%
-            filter(me_vrm_match_flag == 1) %>%
-            group_by(viewed_distance_banding) %>%
-            summarise(row_count = n(),
-                      distinct_sales = n_distinct(sold_vrm),
-                      avg_profit = mean(Chassis.Margin, na.rm = TRUE))
-
-no_finance <- enhanced_match %>%
-            filter(value_added_products == 0) %>%
-            filter(me_vrm_match_flag == 1) %>%
-            group_by(viewed_distance_banding) %>%
-            summarise(row_count = n(),
-                      distinct_sales = n_distinct(sold_vrm),
-                      avg_profit = mean(Chassis.Margin, na.rm = TRUE))
+has_finance <- vrm_agg %>%
+            filter(value_added_products_flag == 1)
 
 
-par(mfrow = c(2,1))
-prof_1 <- barplot(has_finance$avg_profit, names.arg = has_finance$viewed_distance_banding, col = 'steelblue', main = "Avg profit by distance with value added products - enriched data July 2021", xlab = "Distance Banding", ylab = 'Mean Profit' )
-                      
+no_finance <- vrm_agg %>%
+            filter(value_added_products_flag == 0)
 
-prof_2 <- barplot(no_finance$avg_profit, names.arg = no_finance$viewed_distance_banding, col = 'steelblue', main = "Avg profit by distance no value added products- enriched data July 2021", xlab = "Distance Banding", ylab = 'Mean Profit' )
 
-par(mfrow = c(1,1))
+
+par(mfrow=c(1,2))
+hist(has_finance$profit_margin, col = 'skyblue3', breaks = 20, xlab = 'profit margin', main = "Avg profit distribution -  add ons")
+hist(no_finance$profit_margin, col = 'skyblue3', breaks = 20, xlab = 'profit margin', main = "Avg profit distribution - no add ons")
+
+
+par(mfrow=c(1,1))
 
 ```
- 
+
+------------------------------------------
+**Distance and profit add ons**
+Spliting the profit add on data by distance bandings we can see that average profit is slightly higher further away for sales without add ons. More data is needed from consecutive months to understand this trend.
+------------------------------------------
+```{r finance add ons, echo = TRUE}
+
+has_finance_profit <- vrm_agg %>%
+            filter(value_added_products_flag == 1) %>%
+            filter(no_match_flag == 0) %>%
+            group_by(viewed_distance_banding) %>%
+            summarise(row_count = n(),
+                      distinct_sales = n_distinct(sold_vrm),
+                      avg_profit = mean(profit_margin, na.rm = TRUE))
+
+no_finance_profit <- vrm_agg %>%
+            filter(value_added_products_flag == 0) %>%
+            filter(no_match_flag == 0) %>%
+            group_by(viewed_distance_banding) %>%
+            summarise(row_count = n(),
+                      distinct_sales = n_distinct(sold_vrm),
+                      avg_profit = mean(profit_margin, na.rm = TRUE))
+
+par(mfrow=c(1,2))
+
+barplot(has_finance_profit$avg_profit, names.arg = profit_agg$viewed_distance_banding, col = 'steelblue', main = "Avg profit by distance - add ons", xlab = "Distance Banding", ylab = 'Mean Profit' )
+barplot(no_finance_profit$avg_profit, names.arg = profit_agg$viewed_distance_banding, col = 'steelblue', main = "Avg profit by distance - no add ons", xlab = "Distance Banding", ylab = 'Mean Profit' )
+par(mfrow=c(1,1))
+```
+
+------------------------------------------
 **How far away is the buyer to the seller?**
+With the move to location + we've seen less sales from the 100 + miles away from the sites
+------------------------------------------
 
 ```{r distance, echo= TRUE}
 
+# create distance aggregation to show how distance buyer travels changes over time
+distance_matches <- vrm_agg %>%
+                      filter(!is.na(viewed_distance_banding)) %>%
+                      group_by(sold_month, viewed_distance_banding) %>%
+                      summarise(me_vrm_matches = sum(me_vrm_match_flag, na.rm= TRUE),
+                                site_matches =  sum(site_match_flag, na.rm=TRUE),
+                                group_matches = sum(group_match_flag, na.rm = TRUE),
+                                no_matches = sum(no_match_flag, na.rm = TRUE),
+                                total_matches = sum(me_vrm_matches, site_matches, group_match_flag, na.rm = TRUE))
 
-distance_agg <- enhanced_match %>%
-group_by(sold_month, sold_vrm) %>%
-  
-  summarise(row_count = n(), 
-            less_than_10_miles_sum = sum(viewed_distance_banding == 'less than 10 miles', na.rm = TRUE),
-            less_than_20_miles_sum = sum(viewed_distance_banding == 'less than 20 miles', na.rm = TRUE),
-            less_than_50_miles_sum = sum(viewed_distance_banding == 'less than 50 miles', na.rm = TRUE),
-            less_than_100_miles_sum = sum(viewed_distance_banding == 'less than 100 miles', na.rm = TRUE),
-            onehundered_or_more_miles_sum = sum(viewed_distance_banding == '100 or more miles', na.rm = TRUE)) %>%
-          mutate(less_10_miles_match = ifelse(less_than_10_miles_sum >0 ,1,0),
-                less_20_miles_match = ifelse(less_than_20_miles_sum >0 ,1,0), 
-                less_50_miles_match = ifelse(less_than_50_miles_sum >0 ,1,0),
-                less_100_miles_match = ifelse(less_than_100_miles_sum >0 ,1,0),
-                onehundred_or_more_miles_match = ifelse(onehundered_or_more_miles_sum >0 ,1,0))
-
-distance_bandings <- distance_agg %>%
-                  group_by(sold_month) %>%
-                  summarise(less_than_10_miles = sum(less_10_miles_match, na.rm = TRUE),
-                    less_than_20_miles = sum(less_20_miles_match, na.rm= TRUE),
-                    less_than_50_miles =  sum(less_50_miles_match, na.rm=TRUE),
-                    less_than_100_miles = sum(less_100_miles_match, na.rm = TRUE),
-                    onehundred_or_more_miles = sum(onehundred_or_more_miles_match, na.rm = TRUE))
-              
+# melt to in right format for plotting
+distance_matches_m <- melt(distance_matches[,c('sold_month', 'viewed_distance_banding', 'total_matches')],id.vars = c(1,2))
 
 
+library(plyr)
+distance_matches_m <- ddply(distance_matches_m, .(sold_month), transform, percent = value/sum(value) * 100)
+distance_matches_m <- ddply(distance_matches_m, .(sold_month), transform, pos = (cumsum(value) - 0.5 * value))
+distance_matches_m$label = paste0(sprintf("%.0f", distance_matches_m$percent), "%")
 
-distance_bandings_m <- melt(distance_bandings[,c('sold_month', 'less_than_10_miles','less_than_20_miles', 'less_than_50_miles', 'less_than_100_miles', 'onehundred_or_more_miles')],id.vars = 1)
-
-
-
-
-p1 <- ggplot(distance_bandings_m,aes(x = sold_month,y = value)) + 
-    geom_bar(aes(fill = variable),stat = "identity",position = "stack") + theme_minimal() + scale_fill_brewer() + labs(title = "Viewed distance banding") + labs(x = expression("Month"), y = "banding")
-
-
-p2 <- ggplot(distance_bandings_m) + 
-    geom_col(aes(x = sold_month, y = value, fill = variable), position = "fill") +scale_fill_brewer()
+# create barplot
+ggplot(distance_matches_m,aes(x = sold_month,y = percent)) + 
+    geom_bar(aes(fill = viewed_distance_banding),stat = "identity",position = "fill") + geom_text(aes(label = label), position = position_stack(vjust = 0.5)) + theme_minimal() + scale_fill_brewer()  + labs(title = "Autotrader Influence") + labs(x = expression("Month"), y = "% Influence")
 
 
-ggplot(distance_bandings_m, aes(y=value, x=sold_month, fill= variable)) +
-  geom_bar(stat = "identity", position = "fill") +
-  geom_text(aes(label = value), ) +
-  ylab("percent of sold vrms") +
-  scale_fill_discrete(name="Distance Bandings") +
-  xlab("Sold Month")
-
-
-distance_bandings_m <- ddply(distance_bandings_m, .(sold_month), transform, percent = value/sum(value) * 100)
-distance_bandings_m <- ddply(distance_bandings_m, .(sold_month), transform, pos = (cumsum(value) - 0.5 * value))
-distance_bandings_m$label = paste0(sprintf("%.0f", distance_bandings_m$percent), "%")
-
-ggplot(distance_bandings_m, aes(x=factor(sold_month), y = percent, fill = variable))+
-   geom_bar(position = position_stack(), stat = "identity", width = .7) +
-   geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 2)
-
-  #
 ```
 
 ------------------------
 **How does distance between buyer & seller vary by sold vehicle type (e.g. standard vs. premium)?**
+Premium vehicle sales are likely to come from 21-50 miles, whereas standard vehicles are being purchased from further.
 ------------------------
 
 ```{r standard_premium, echo = TRUE}
-premium_standard <- enhanced_match %>%
-                    mutate(type_of_stock = ifelse(sold_make %in% c('BMW', 'Audi', 'Jaguar', 'Land Rover', 'Mercedes-Benz', 'MINI', 'Jeep', 'Alfa Romeo'), "premium",
-                                           ifelse(sold_make %in% c('Citroen', 'Peugeot', 'Vauxhall', 'Hyundai', 'Kia', 'Nissan', "Volkswagen", 'Peugeot', 'Renault', 'Ford', 'Hyundai','Toyota', 'Volvo', 'Mazda', 'SEAT', 'Dacia', 'SKODA', 'Suzuki', 'DS AUTOMOBILES', 'Mitsubishi', 'Smart', 'Honda'), "standard", "other")))
 
 
-premium_standard_agg <- premium_standard %>%
-  group_by(type_of_stock, sold_month, sold_vrm) %>%
-  summarise(row_count = n(), 
-            less_than_10_miles_sum = sum(viewed_distance_banding == 'less than 10 miles', na.rm = TRUE),
-            less_than_20_miles_sum = sum(viewed_distance_banding == 'less than 20 miles', na.rm = TRUE),
-            less_than_50_miles_sum = sum(viewed_distance_banding == 'less than 50 miles', na.rm = TRUE),
-            less_than_100_miles_sum = sum(viewed_distance_banding == 'less than 100 miles', na.rm = TRUE),
-            onehundered_or_more_miles_sum = sum(viewed_distance_banding == '100 or more miles', na.rm = TRUE)) %>%
-          mutate(less_10_miles_match = ifelse(less_than_10_miles_sum >0 ,1,0),
-                less_20_miles_match = ifelse(less_than_20_miles_sum >0 ,1,0), 
-                less_50_miles_match = ifelse(less_than_50_miles_sum >0 ,1,0),
-                less_100_miles_match = ifelse(less_than_100_miles_sum >0 ,1,0),
-                onehundred_or_more_miles_match = ifelse(onehundered_or_more_miles_sum >0 ,1,0))
+premium_standard_matches <- vrm_agg %>%
+                      filter(!is.na(viewed_distance_banding)) %>%
+                      group_by(sold_month, viewed_distance_banding, type_of_stock) %>%
+                      summarise(me_vrm_matches = sum(me_vrm_match_flag, na.rm= TRUE),
+                                site_matches =  sum(site_match_flag, na.rm=TRUE),
+                                group_matches = sum(group_match_flag, na.rm = TRUE),
+                                no_matches = sum(no_match_flag, na.rm = TRUE))
+
+# melt to in right format for plotting
+premium_standard_matches_m <- melt(premium_standard_matches[,c('sold_month','viewed_distance_banding', 'type_of_stock', 'no_matches', 'group_matches','site_matches', 'me_vrm_matches')],id.vars = c(1,2,3))
+
+# create barplot
+ggplot(premium_standard_matches_m,aes(x = sold_month,y = value)) + 
+    geom_bar(aes(fill = viewed_distance_banding),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "Distance Banding") + labs(x = expression("Month"), y = "Influence")+ facet_grid(cols = vars(type_of_stock))
 
 
-type_stock_distance_bandings <- premium_standard_agg %>%
-                             group_by(type_of_stock, sold_month) %>%
-                             summarise(less_than_10_miles = sum(less_10_miles_match, na.rm = TRUE),
-                              less_than_20_miles = sum(less_20_miles_match, na.rm= TRUE),
-                              less_than_50_miles =  sum(less_50_miles_match, na.rm=TRUE),
-                              less_than_100_miles = sum(less_100_miles_match, na.rm = TRUE),
-                              onehundred_or_more_miles = sum(onehundred_or_more_miles_match, na.rm = TRUE))
-
-
-type_stock_distance_bandings_m <- melt(type_stock_distance_bandings[,c('type_of_stock','less_than_10_miles','less_than_20_miles', 'less_than_50_miles', 'less_than_100_miles', 'onehundred_or_more_miles')],id.vars = 1)
-
-
-test_m <- melt(setDT(type_stock_distance_bandings), id.vars ="type_of_stock")
-
-
-ggplot(type_stock_distance_bandings_m,aes(x = type_of_stock,y = value)) + 
-    geom_bar(aes(fill = variable),stat = "identity",position = "stack") + theme_minimal() + scale_fill_brewer() + labs(title = "Viewed distance banding") + labs(x = expression("type_of_stock"), y = "viewed_distance")
-
- 
-
-
-
-#panel plot one chart standard one premium
 ```
 
 ------------------------
@@ -374,36 +368,8 @@ ggplot(type_stock_distance_bandings_m,aes(x = type_of_stock,y = value)) +
 
 ```{r standard_premium_matches, echo = TRUE}
 
-premium_standard_agg <- premium_standard %>%
-  group_by(type_of_stock, sold_month, sold_vrm) %>%
-  summarise(row_count = n(), 
-            vrm_match_flag_sum = sum(vrm_match_flag, na.rm = TRUE),
-            me_vrm_match_flag_sum = sum(me_vrm_match_flag, na.rm = TRUE),
-            site_match_flag_sum =  sum(site_make_model_match_flag + site_make_match_flag + site_make_match_flag , na.rm=TRUE),
-            group_match_flag_sum = sum(group_make_model_match_flag + group_make_match_flag + group_match_flag, na.rm = TRUE)) %>%
-          mutate(vrm_match_flag = ifelse(vrm_match_flag_sum >0 ,1,0),
-            me_vrm_match_flag = ifelse(me_vrm_match_flag_sum >0 ,1,0),
-            site_match_flag = ifelse(site_match_flag_sum >0, 1,0),
-            group_match_flag = ifelse(group_match_flag_sum >0, 1,0),
-            no_match_flag = ifelse((me_vrm_match_flag +site_match_flag + group_match_flag) >0, 0, 1))
-
-
-
-
-premium_standard_matches <- premium_standard_agg %>%
-                            group_by(type_of_stock, sold_month) %>%
-                            summarise(vrm_matches = sum(vrm_match_flag, na.rm = TRUE),
-                               me_vrm_matches = sum(me_vrm_match_flag, na.rm= TRUE),
-                               site_matches =  sum(site_match_flag, na.rm=TRUE),
-                               group_matches = sum(group_match_flag, na.rm = TRUE),
-                               no_matches = sum(no_match_flag, na.rm = TRUE))
-
-premium_standard_matches_m <- melt(premium_standard_matches[,c('type_of_stock', 'me_vrm_matches','site_matches', 'group_matches', 'no_matches')],id.vars = 1)
-
-
- 
-ggplot(premium_standard_matches_m) + 
-    geom_col(aes(x = type_of_stock, y = value, fill = variable), position = "fill") +scale_fill_brewer()
+ggplot(premium_standard_matches_m,aes(x = sold_month,y = value)) + 
+    geom_bar(aes(fill = variable),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "Autotrader Influence") + labs(x = expression("Month"), y = "Influence")+ facet_grid(cols = vars(type_of_stock))
 
 
 ```
