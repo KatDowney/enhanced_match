@@ -240,19 +240,17 @@ distance_matches_m <- melt(distance_matches[,c('sold_month', 'viewed_distance_ba
 
 # create barplot
 
-par(mfrow=c(1,2))
 ggplot(distance_matches_m,aes(x = sold_month,y = value)) + 
     geom_bar(aes(fill = viewed_distance_banding),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "Autotrader Influence") + labs(x = expression("Month"), y = "Influence")
 
 
-ggplot(distance_matches_m, aes(x= sold_month, y= value, fill = viewed_distance_banding, label = value)) + geom_bar(stat="identity") + geom_text(size=3, position = position_stack(vjust = 0.5))+ theme_minimal() + scale_fill_brewer() + labs(title = "Autotrader Influence") + labs(x = expression("Month"), y = "Influence")
-
-par(mfrow=c(1,1))
 
 ```
 
+```{r distance 2, echo = TRUE}
+ggplot(distance_matches_m, aes(x= sold_month, y= value, fill = viewed_distance_banding, label = value)) + geom_bar(stat="identity") + geom_text(size=3, position = position_stack(vjust = 0.5))+ theme_minimal() + scale_fill_brewer() + labs(title = "Autotrader Influence") + labs(x = expression("Month"), y = "Influence")
 
-
+```
 
 -------------------------------------
 **What is the total value/profit of cars sold through Market Extension**

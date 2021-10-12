@@ -103,20 +103,30 @@ enhanced_match_base <- bq_table_download(d)
 rm(con)
 
 ```
+------------------------
 **Purpose of analysis**
 Enhanced match data to investigate changes determined by switching from Centrally Held Market Extension product to the Location Plus product.
 ------------------------
+
+
+
+
 **ME Locations**
-------------------------
 [ME Locations] (https://autotrader.eu.looker.com/explore/customer_performance/retailer_performance?qid=UOGyp76yoNhXo6N30w1V43&toggle=dat,fil,vis,vse)
 ![ME Locations](./pictures/location_of_sites.png)
+
 Currently locations are closely grouped together in the South East region of the UK.
+
+
+
 ------------------------
 **Me Product Timeline**
 ------------------------
 [ME Product Timeline] (https://autotrader.eu.looker.com/explore/customer_performance/retailer_performance?qid=EcNifiWF2u6fyJJYnUxWE7&toggle=fil,vis)
-![ME Product Timeline](./pictures/change_to_location_plus.png)
-Above is a timeline of stock on the Market Extension, centrally held stock on 'DCC Online' until June 2021 then moving onto the Location Plus product, where stock increased and moved to each DCC Dids.
+![ME Product Timeline](./pictures/change_to_location_plus.png){width=800px}
+
+
+Above is a timeline of stock on the Market Extension, centrally held stock on 'DCC Online' until June 2021 then moving onto the Location Plus product.
 
 -------------------------------------------
 **VRM Example - Direct Match vs ME Match**
@@ -222,6 +232,14 @@ Group matches for May and June 2021 are currently not correct, work is going on 
 ------------------------------------------
 
 ```{r distance, echo= TRUE}
+vrm_agg <- vrm_agg %>%
+        mutate(viewed_distance_banding = ifelse(matched_viewed_distance_between <10, "less than 10 miles",
+                                         ifelse(matched_viewed_distance_between <20, "less than 20 miles",
+                                         ifelse(matched_viewed_distance_between <50, "less than 50 miles",
+                                        ifelse(matched_viewed_distance_between <100, "less than 100 miles",
+                                        ifelse(matched_viewed_distance_between >=100, "100 or more miles", NA))))))
+
+vrm_agg$viewed_distance_banding <- factor(vrm_agg$viewed_distance_banding, levels = c("less than 10 miles", "less than 20 miles", "less than 50 miles", "less than 100 miles", "100 or more miles", NA), ordered = TRUE)
 
 # create distance aggregation to show how distance buyer travels changes over time
 distance_matches <- vrm_agg %>%
@@ -230,45 +248,36 @@ distance_matches <- vrm_agg %>%
                       summarise(me_vrm_matches = sum(me_vrm_match_flag, na.rm= TRUE),
                                 site_matches =  sum(site_match_flag, na.rm=TRUE),
                                 group_matches = sum(group_match_flag, na.rm = TRUE),
-                                no_matches = sum(no_match_flag, na.rm = TRUE),
-                                total_matches = sum(me_vrm_matches, site_matches, group_match_flag, na.rm = TRUE))
+                                no_matches = sum(no_match_flag, na.rm = TRUE))
 
 # melt to in right format for plotting
-distance_matches_m <- melt(distance_matches[,c('sold_month', 'viewed_distance_banding', 'total_matches')],id.vars = c(1,2))
+
+distance_matches_m <- melt(distance_matches[,c('sold_month', 'viewed_distance_banding', 'me_vrm_matches', 'site_matches', 'group_matches', 'no_matches')],id.vars = c(1,2))
 
 
 
 # create barplot
 
-par(mfrow=c(1,2))
-ggplot(distance_matches_m,aes(x = sold_month,y = value)) + 
-    geom_bar(aes(fill = viewed_distance_banding),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "Autotrader Influence") + labs(x = expression("Month"), y = "Influence")
+tmp <- distance_matches_m %>% group_by(sold_month) %>% summarise(monthly_total = sum(value, na.rm=T))
+distance_matches_m_agg <- left_join(distance_matches_m, tmp, by = c('sold_month'), copy=T)
+distance_matches_m_agg <- distance_matches_m_agg %>%
+                            ungroup() %>%
+                            group_by(sold_month, viewed_distance_banding) %>% 
+                              summarise(percent = sum(value, na.rm=T)/monthly_total)
+
+ggplot(distance_matches_m_agg,aes(x = sold_month,y = value)) + 
+    geom_bar(aes(fill = viewed_distance_banding),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "% of sales by vehicle banding") + labs(x = expression("Month"), y = "Influence") + geom_text(aes(label=distance_matches_m_agg$value, y=distance_matches_m_agg$value/100))
 
 
-ggplot(distance_matches_m, aes(x= sold_month, y= value, fill = viewed_distance_banding, label = value)) + geom_bar(stat="identity") + geom_text(size=3, position = position_stack(vjust = 0.5))+ theme_minimal() + scale_fill_brewer() + labs(title = "Autotrader Influence") + labs(x = expression("Month"), y = "Influence")
-
-par(mfrow=c(1,1))
 
 ```
 
-
-
-
 -------------------------------------
-**What is the total value/profit of cars sold through Market Extension**
-With only enriched data for July 2021 we can only see the average profit is a round the £1000 - £2000 mark. We can also see that average profit has not changed the further from  the did location  the sale is.
+**Profit by Distance Sold - July 2021 Data**
 -------------------------------------
 ```{r profit, echo = TRUE}
 
-vrm_agg <- vrm_agg %>%
-        mutate(viewed_distance_banding = ifelse(matched_viewed_distance_between <10, "less than 10 miles",
-                                         ifelse(matched_viewed_distance_between <20, "less than 20 miles",
-                                         ifelse(matched_viewed_distance_between <50, "less than 50 miles",
-                                        ifelse(matched_viewed_distance_between <100, "less than 100 miles",
-                                        ifelse(matched_viewed_distance_between >=100, "100 or more miles", NA))))))
 
-
-vrm_agg$viewed_distance_banding <- factor(vrm_agg$viewed_distance_banding, levels = c("less than 10 miles", "less than 20 miles", "less than 50 miles", "less than 100 miles", "100 or more miles", NA), ordered = TRUE)
 
 
 profit_agg <- vrm_agg %>%
@@ -278,14 +287,11 @@ profit_agg <- vrm_agg %>%
                       distinct_sales = n_distinct(sold_vrm),
                       avg_profit = mean(profit_margin, na.rm = TRUE))
 
-par(mfrow=c(1,2))
-hist(vrm_agg$profit_margin, col = 'skyblue3', breaks = 20, xlab = 'profit margin', main = "Avg profit distribution")
 
-barplot(profit_agg$avg_profit, names.arg = profit_agg$viewed_distance_banding, col = 'steelblue', main = "Avg profit by distance", xlab = "Distance Banding", ylab = 'Mean Profit' )
-
-par(mfrow=c(1,1))
-
-
+#hist(vrm_agg$profit_margin, col = 'skyblue3', breaks = 20, xlab = 'profit margin', main = "Avg profit distribution")
+par(mai=c(1,2,1,1))
+barplot(profit_agg$avg_profit, names.arg = profit_agg$viewed_distance_banding, col="dodgerblue3",
+        density=c(30,10,20,35,15,25),angle=60, main = "Avg profit by distance", xlab = "Mean Profit(£)" , cex.names=0.7, horiz = TRUE, las=1)
 
 
 
