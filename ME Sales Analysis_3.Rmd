@@ -162,6 +162,9 @@ enhanced_match <- enhanced_match_base %>%
 
 enhanced_match$sold_month <- format(as.Date(enhanced_match$sold_date), "%Y-%m")
 
+# replxce NA with 0 on attribution flags else casues problems when summarising further down the line
+enhanced_match[c("vrm_match_flag", "site_all_match_flag", "group_all_match_flag", "me_vrm_match_flag")][is.na(enhanced_match[c("vrm_match_flag", "site_all_match_flag", "group_all_match_flag", "me_vrm_match_flag")])] <- 0
+
 # q1.how many sales did Auto Trader influence (split by the usual VRM, Site, Group level)
 
 #CHECKING OUT SALE EXAMPLE
@@ -186,15 +189,6 @@ vrm_example_map <- vrm_example %>%
   select(sold_vrm, sold_did, sold_did_lat, sold_did_lon, sold_did_postcode, buyyer_postcode_district, buyer_lat, buyer_lon, viewed_vrm, viewed_did, viewed_retailer_postcode, viewed_retailer_postcode_1, viewed_retailer_postcode_2, viewed_distance_between) 
 
 
-viewed_did_lat <- vrm_example_map$viewed_retailer_postcode_1
-viewed_did_lon <- vrm_example_map$viewed_retailer_postcode_2
-sold_did_lat <- vrm_example_map$sold_did_lat
-sold_did_lon <- vrm_example_map$sold_did_lon
-buyer_lat <- vrm_example_map$buyer_lat
-buyer_lon <- vrm_example_map$buyer_lon
-
-
-
 worldmap = map_data('world')
 
 ggplot() + 
@@ -204,12 +198,12 @@ ggplot() +
                fill = 'gray90', 
                color = 'black') + 
   coord_fixed(ratio = 1.3, 
-              xlim = c(-10,3), 
-              ylim = c(50, 59)) + 
+              xlim = c(-5,1), 
+              ylim = c(50, 55)) + 
   theme_void() + 
-  geom_point(data = vrm_example_map, aes(x = sold_did_lon, y = sold_did_lat, size = 4, shape = 1, fill = "darkred")) +
-  geom_point(data = vrm_example_map, aes(x = viewed_retailer_postcode_2, y = viewed_retailer_postcode_1, size = 1, shape = 23, fill = "blue")) + 
-  geom_point(data = vrm_example_map, aes(x = buyer_lon, y = buyer_lat, size = 1, shape = 23, fill = "green"))
+  geom_point(data = vrm_example_map, aes(x = sold_did_lon, y = sold_did_lat, size = 0.5, col = "darkred")) +
+  geom_point(data = vrm_example_map, aes(x = viewed_retailer_postcode_2, y = viewed_retailer_postcode_1, size = 0.5, col = "blue")) + 
+  geom_point(data = vrm_example_map, aes(x = buyer_lon, y = buyer_lat, size = 0.5, col = "green")) + theme(legend.position="none")
 
 
 
@@ -237,6 +231,28 @@ vrm_agg <- enhanced_match %>%
                   group_match_flag = ifelse( (site_match_flag == 1) | (me_vrm_match_flag == 1) ,0, group_match_flag),
                   no_match_flag = ifelse((me_vrm_match_flag + site_match_flag + group_match_flag) >0, 0, 1),
                   )
+
+# replace NA with no match as this is a legit banding - if no match then ther is no distanc, so still want to include this in charts
+vrm_agg$matched_viewed_distance_between[is.nan(vrm_agg$matched_viewed_distance_between)]<- -1
+
+# create distance banding and turn into factor so shows in right order on charts
+vrm_agg <- vrm_agg %>%
+        mutate(viewed_distance_banding = ifelse(matched_viewed_distance_between == -1, "No match",
+                                         ifelse(matched_viewed_distance_between <10, "less than 10 miles",
+                                         ifelse(matched_viewed_distance_between <20, "less than 20 miles",
+                                         ifelse(matched_viewed_distance_between <50, "less than 50 miles",
+                                         ifelse(matched_viewed_distance_between <100, "less than 100 miles",
+                                         ifelse(matched_viewed_distance_between >=100, "100 or more miles" 
+                                                )))))))
+
+#  convert to factore with levels
+vrm_agg$viewed_distance_banding <- factor(vrm_agg$viewed_distance_banding, levels = c("less than 10 miles", "less than 20 miles", "less than 50 miles", "less than 100 miles", "100 or more miles", 'No match'), ordered = TRUE)
+
+
+# change back ***SKANKY, NEED TO FIND BETTER WASY TO DO THIS!!!! ***
+vrm_agg$matched_viewed_distance_between[vrm_agg$matched_viewed_distance_between == -1]<- NaN
+
+
 ```
 
 
@@ -272,14 +288,6 @@ Group matches for May and June 2021 are currently not correct, work is going on 
 ------------------------------------------
 
 ```{r distance, echo= TRUE}
-vrm_agg <- vrm_agg %>%
-        mutate(viewed_distance_banding = ifelse(matched_viewed_distance_between <10, "less than 10 miles",
-                                         ifelse(matched_viewed_distance_between <20, "less than 20 miles",
-                                         ifelse(matched_viewed_distance_between <50, "less than 50 miles",
-                                        ifelse(matched_viewed_distance_between <100, "less than 100 miles",
-                                        ifelse(matched_viewed_distance_between >=100, "100 or more miles", NA))))))
-
-vrm_agg$viewed_distance_banding <- factor(vrm_agg$viewed_distance_banding, levels = c("less than 10 miles", "less than 20 miles", "less than 50 miles", "less than 100 miles", "100 or more miles", NA), ordered = TRUE)
 
 # create distance aggregation to show how distance buyer travels changes over time
 distance_matches <- vrm_agg %>%
@@ -305,8 +313,8 @@ distance_matches_m_agg <- distance_matches_m_agg %>%
                             group_by(sold_month, viewed_distance_banding) %>% 
                               summarise(percent = sum(value, na.rm=T)/monthly_total)
 
-ggplot(distance_matches_m_agg,aes(x = sold_month,y = value)) + 
-    geom_bar(aes(fill = viewed_distance_banding),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "% of sales by vehicle banding") + labs(x = expression("Month"), y = "Influence") + geom_text(aes(label=distance_matches_m_agg$value, y=distance_matches_m_agg$value/100))
+ggplot(distance_matches_m_agg,aes(x = sold_month,y = percent)) + 
+    geom_bar(aes(fill = forcats::fct_rev(viewed_distance_banding)),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "% of sales by distance banding") + labs(x = expression("Month"), y = "Influence") + geom_text(aes(label=distance_matches_m_agg$percent, y=distance_matches_m_agg$percent/100))
 
 
 
@@ -374,7 +382,7 @@ Premium vehicle sales are likely to come from 21-50 miles, whereas standard vehi
 
 
 premium_standard_matches <- vrm_agg %>%
-                      filter(!is.na(viewed_distance_banding)) %>%
+                      filter(type_of_stock %in% c('standard', 'premium')) %>%
                       group_by(sold_month, viewed_distance_banding, type_of_stock) %>%
                       summarise(me_vrm_matches = sum(me_vrm_match_flag, na.rm= TRUE),
                                 site_matches =  sum(site_match_flag, na.rm=TRUE),
@@ -386,7 +394,7 @@ premium_standard_matches_m <- melt(premium_standard_matches[,c('sold_month','vie
 
 # create barplot
 ggplot(premium_standard_matches_m,aes(x = sold_month,y = value)) + 
-    geom_bar(aes(fill = viewed_distance_banding),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "Distance Banding") + labs(x = expression("Month"), y = "Influence")+ facet_grid(cols = vars(type_of_stock))
+    geom_bar(aes(fill = forcats::fct_rev(viewed_distance_banding)),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "Distance Banding") + labs(x = expression("Month"), y = "Influence")+ facet_grid(cols = vars(type_of_stock))
 
 
 ```
