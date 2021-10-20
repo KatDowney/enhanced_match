@@ -110,15 +110,11 @@ Enhanced match data to investigate changes determined by switching from Centrall
 ------------------------
 
 
-
-
 **ME Locations**
 [ME Locations] (https://autotrader.eu.looker.com/explore/customer_performance/retailer_performance?qid=UOGyp76yoNhXo6N30w1V43&toggle=dat,fil,vis,vse)
 ![ME Locations](./pictures/location_of_sites.png)
 
 Currently locations are closely grouped together in the South East region of the UK.
-
-
 
 ------------------------
 **Me Product Timeline**
@@ -131,11 +127,11 @@ Above is a timeline of stock on the Market Extension, centrally held stock on 'D
 
 -------------------------------------------
 **VRM Example - Direct Match vs ME Match**
+Current direct match does not properly measure market extension, a vrm could be seen at multiple locations  if on the location plus product. The example below shows that this specific vrm should have a direct match as it was viewed at a different location (due to ME) to where it was sold at.
 -------------------------------------------
 
 ```{r example_sale, echo= FALSE}
-
-################## TEMP TO CHECK SOME EXAMPLES FOR THE DATA PREP  -----------
+################## TEMP TO CHECK SOME EXAMPLES FOR THE DATA PREP  ----------
 
 # events of a simple buyer journey
 # enhanced_match_base %>% group_by(sold_vrm) %>% summarise(count = n(), matches = sum(group_make_model_match_flag + group_make_match_flag + group_match_flag )) %>% View()
@@ -179,7 +175,10 @@ vrm_example %>%
 
 
 ```
-**map view of vrm me matches**
+-------------------------------------------
+**VRM Example Map View - Direct Match vs ME Match**
+The map view below details the specific vrm example: it's buyers location,  viewed retailer location and sold retailer locations
+--------------------------------------------
 
 ```{r mapview}
 
@@ -201,14 +200,46 @@ ggplot() +
               xlim = c(-5,1), 
               ylim = c(50, 55)) + 
   theme_void() + 
-  geom_point(data = vrm_example_map, aes(x = sold_did_lon, y = sold_did_lat, size = 0.5, col = "darkred")) +
-  geom_point(data = vrm_example_map, aes(x = viewed_retailer_postcode_2, y = viewed_retailer_postcode_1, size = 0.5, col = "blue")) + 
-  geom_point(data = vrm_example_map, aes(x = buyer_lon, y = buyer_lat, size = 0.5, col = "green")) + theme(legend.position="none")
+  geom_point(data = vrm_example_map, aes(x = sold_did_lon, y = sold_did_lat,col = "sold location")) +
+  geom_point(data = vrm_example_map, aes(x = viewed_retailer_postcode_2, y = viewed_retailer_postcode_1, col = "viewed location")) + 
+  geom_point(data = vrm_example_map, aes(x = buyer_lon, y = buyer_lat,  col = "buyer location")) + theme(legend.position="right")
+
+
+```
+
+-------------------------------------------
+**VRM Example Map View - Direct Match vs ME Match**
+The map view below details the specific vrm example: it's buyers location,  viewed retailer location and sold retailer locations.
+--------------------------------------------
+
+
+``` {r direct_vs_me_matches}
+
+
+direct_vs_me_matches_agg <- enhanced_match %>%
+                            group_by(sold_vrm, sold_month, sold_make, type_of_stock) %>%
+                            mutate(value_added_products = ifelse(Value.added.Products >0, 1,0),
+                            matched_viewed_distance_between = ifelse( (me_vrm_match_flag + site_all_match_flag + group_all_match_flag) > 0, viewed_distance_between, NA)
+                            )%>%
+                 summarise(row_count = n(),
+                      me_vrm_match_flag = max(me_vrm_match_flag, na.rm = TRUE),
+                      direct_match_flag = max(vrm_match_flag, na.rm = TRUE))
 
 
 
+direct_vs_me_matches <- direct_vs_me_matches_agg %>%
+                        group_by(sold_month) %>%
+                        summarise(me_vrm_matches = sum(me_vrm_match_flag, na.rm= TRUE),
+                         direct_matches =  sum(direct_match_flag, na.rm=TRUE))
 
 
+direct_vs_me_matches_m <- melt(direct_vs_me_matches[,c('sold_month', 'me_vrm_matches', 'direct_matches')],id.vars = 1)
+
+
+
+ggplot(direct_vs_me_matches_m,aes(x = sold_month,y = value)) + 
+    geom_bar(aes(fill = variable),stat = "identity",position = "stack") + theme_minimal() + scale_fill_brewer() + labs(title = "Direct vs ME Matches") + labs(x = expression("Month"), y = "Number of Matches")
+        
 ```
 
 ```{r vrm_summary}
@@ -258,7 +289,7 @@ vrm_agg$matched_viewed_distance_between[vrm_agg$matched_viewed_distance_between 
 
 ---------------------------------
 **How many sales did Auto Trader influence (split by the usual VRM, Site, Group level)**
-After the switch to location + in July 2021 ME vrm matches greatly increased for DCC Sales
+Sales increased in July 2021 for the DCC group as they moved onto the location plus product, but sales dropped down to previous months levels in August.
 ---------------------------------
 
 ```{r match_sales}
@@ -281,10 +312,9 @@ ggplot(matches_m,aes(x = sold_month,y = value)) +
 
 ```
 
-Group matches for May and June 2021 are currently not correct, work is going on to fix this and we expect group matches to be higher. July 2021 sold vehicles is much higher due to increased stock in that particular month.
-
 ------------------------------------------
 **How far away is the buyer to the seller?**
+There does not look to be a large change in the distance between buyer and seller but this is likely due to the fact that DCC have locations grouped close together.
 ------------------------------------------
 
 ```{r distance, echo= TRUE}
@@ -314,18 +344,20 @@ distance_matches_m_agg <- distance_matches_m_agg %>%
                               summarise(percent = sum(value, na.rm=T)/monthly_total)
 
 ggplot(distance_matches_m_agg,aes(x = sold_month,y = percent)) + 
-    geom_bar(aes(fill = forcats::fct_rev(viewed_distance_banding)),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "% of sales by distance banding") + labs(x = expression("Month"), y = "Influence") + geom_text(aes(label=distance_matches_m_agg$percent, y=distance_matches_m_agg$percent/100))
+    geom_bar(aes(fill = viewed_distance_banding),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "% of sales by distance banding") + labs(x = expression("Month"), y = "Influence") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
 
+#need to sort labelling out ....geom_text(aes(label=distance_matches_m_agg$percent, y=distance_matches_m_agg$percent/100)) + 
+
+#forcats::fct_rev
 
 ```
 
 -------------------------------------
 **Profit by Distance Sold - July 2021 Data**
+Enriched profit data for DCC was only available for July 2021, the data shows that average profit does not seem to fluctuate much when the buyer is further away from the retailer. Most sales for DCC came from less than 100 miles away from the site location.
 -------------------------------------
 ```{r profit, echo = TRUE}
-
-
 
 
 profit_agg <- vrm_agg %>%
@@ -342,12 +374,20 @@ barplot(profit_agg$avg_profit, names.arg = profit_agg$viewed_distance_banding, c
         density=c(30,10,20,35,15,25),angle=60, main = "Avg profit by distance", xlab = "Mean Profit(£)" , cex.names=0.7, horiz = TRUE, las=1)
 
 
+```
+```{r profit sales}
+par(mai=c(1,2,1,1))
+barplot(profit_agg$distinct_sales, names.arg = profit_agg$viewed_distance_banding, col="dodgerblue3",
+        density=c(30,10,20,35,15,25),angle=60, main = "Amount of sales by distance banding", xlab = "Number of Sales" , cex.names=0.7, horiz = TRUE, las=1)
 
 ```
 
+
 -------------------------------------
 **What is the total value/profit of cars sold through Market Extension - product add ons**
-Looking at the enriched profit data for July the cars sold with 'add ons' (finance etc) those without add ons appears to have a higher average profit
+
+Although less sales are seen with finance add ons in July 2021 those that were sold with add ons were the most likely to come from 50 - 100 miles away from the retailer location.
+
 -------------------------------------
 
 ```{r finance, echo = TRUE}
@@ -364,9 +404,9 @@ no_finance <- vrm_agg %>%
             summarise(distinct_sales = n_distinct(sold_vrm))
 
 
-par(mfrow=c(1,2))
-barplot(has_finance$distinct_sales, names.arg = has_finance$viewed_distance_banding, col = 'steelblue', main = "Add Ons", xlab = "Distance Banding", ylab = 'distinct sales' )
-barplot(no_finance$distinct_sales, names.arg = no_finance$viewed_distance_banding, col = 'steelblue', main = "No Add Ons", xlab = "Distance Banding", ylab = 'distinct sales' )
+par(mfrow=c(1,2)) 
+barplot(has_finance$distinct_sales, names.arg = has_finance$viewed_distance_banding, col = 'steelblue', main = "Add Ons", xlab = "Distinct Sales",cex.names=0.7, horiz = TRUE, las=1)
+barplot(no_finance$distinct_sales, names.arg = no_finance$viewed_distance_banding, col = 'steelblue', main = "No Add Ons", xlab = "Distinct Sales", cex.names=0.7, horiz = TRUE, las=1)
 
 
 par(mfrow=c(1,1))
@@ -375,7 +415,6 @@ par(mfrow=c(1,1))
 
 ------------------------
 **How does distance between buyer & seller vary by sold vehicle type (e.g. standard vs. premium)?**
-Premium vehicle sales are likely to come from 21-50 miles, whereas standard vehicles are being purchased from further.
 ------------------------
 
 ```{r standard_premium, echo = TRUE}
@@ -394,7 +433,7 @@ premium_standard_matches_m <- melt(premium_standard_matches[,c('sold_month','vie
 
 # create barplot
 ggplot(premium_standard_matches_m,aes(x = sold_month,y = value)) + 
-    geom_bar(aes(fill = forcats::fct_rev(viewed_distance_banding)),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "Distance Banding") + labs(x = expression("Month"), y = "Influence")+ facet_grid(cols = vars(type_of_stock))
+    geom_bar(aes(fill = viewed_distance_banding),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "Distance Banding") + labs(x = expression("Month"), y = "Influence")+ facet_grid(cols = vars(type_of_stock))+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
 
 ```
@@ -406,7 +445,7 @@ ggplot(premium_standard_matches_m,aes(x = sold_month,y = value)) +
 ```{r standard_premium_matches, echo = TRUE}
 
 ggplot(premium_standard_matches_m,aes(x = sold_month,y = value)) + 
-    geom_bar(aes(fill = variable),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "Autotrader Influence") + labs(x = expression("Month"), y = "Influence")+ facet_grid(cols = vars(type_of_stock))
+    geom_bar(aes(fill = variable),stat = "identity",position = "fill") + theme_minimal() + scale_fill_brewer() + labs(title = "Autotrader Influence") + labs(x = expression("Month"), y = "Influence")+ facet_grid(cols = vars(type_of_stock))+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
 
 ```
